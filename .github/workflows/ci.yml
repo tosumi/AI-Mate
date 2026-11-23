@@ -1,0 +1,46 @@
+# 自動テストと lint(本体仕様書 §11.5.7)。Azure に接続するテスト(azure マーカー)は含めない。
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3 # 主版の目印(v10)は公開されていないので、正確な版を指定する
+        with:
+          python-version: "3.13"
+      - run: uv sync --frozen
+      - run: uv run ruff check src tests
+      - run: uv run pytest -q
+
+  # Web の画面(web/。本体仕様書 §15.1 の M7): 型検査、lint、テスト、ビルド
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npm run check:dist # 配信用のビルドに、E2E 専用の偽物のサインインが入っていないこと
+      - run: npm audit --audit-level=high
+      # 画面の通しのテスト(E2E。偽物のサインインと、差し替えの API。実在のサービスには接続しない)
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e

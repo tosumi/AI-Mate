@@ -1,0 +1,40 @@
+{"id": "thx-01", "tags": ["gratitude"], "text": "ありがとう、すごく助かったよ。", "expect": {"acts_include": ["gratitude"], "acts_exclude": ["hostility"]}}
+{"id": "thx-02", "tags": ["gratitude"], "text": "話を聞いてくれて、ほんとに感謝してる。", "expect": {"acts_include": ["gratitude"], "acts_exclude": ["hostility"]}}
+{"id": "thx-03", "tags": ["gratitude"], "text": "どうも。", "expect": {"acts_exclude": ["hostility", "apology"]}}
+{"id": "thx-04", "tags": ["gratitude", "third_party"], "text": "今日、先輩が手伝ってくれてさ。ほんとありがたかった。", "expect": {"acts_exclude": ["gratitude", "hostility"]}}
+{"id": "apo-01", "tags": ["apology"], "text": "さっきはきつい言い方して、ごめんね。", "expect": {"acts_include": ["apology"], "acts_exclude": ["hostility"]}}
+{"id": "apo-02", "tags": ["apology"], "text": "返事が遅くなってすみません。", "expect": {"acts_include": ["apology"], "acts_exclude": ["hostility"]}}
+{"id": "apo-03", "tags": ["apology", "third_party"], "text": "友達に謝らなきゃいけないことがあって、気が重い。", "expect": {"acts_exclude": ["apology", "hostility"]}}
+{"id": "pra-01", "tags": ["praise"], "text": "その考え方、すごくいいね。", "expect": {"acts_include": ["praise"], "acts_exclude": ["hostility"]}}
+{"id": "pra-02", "tags": ["praise"], "text": "説明がわかりやすくて、さすがだなって思った。", "expect": {"acts_include": ["praise"], "acts_exclude": ["hostility"]}}
+{"id": "pra-03", "tags": ["praise", "exclude"], "text": "かわいいね。顔が好みだな。", "expect": {"acts_exclude": ["praise", "hostility"]}}
+{"id": "hos-01", "tags": ["hostility"], "text": "使えないな、お前。", "expect": {"acts_include": ["hostility"], "target": "character"}}
+{"id": "hos-02", "tags": ["hostility"], "text": "もう話しかけないで。", "expect": {"acts_include": ["hostility"], "target": "character"}}
+{"id": "hos-03", "tags": ["hostility"], "text": "あなたと話しても時間の無駄だった。", "expect": {"acts_include": ["hostility"], "target": "character"}}
+{"id": "hos-04", "tags": ["hostility"], "text": "うるさい。黙ってて。", "expect": {"acts_include": ["hostility"], "target": "character"}}
+{"id": "hos-05", "tags": ["hostility"], "text": "お前の言うことは全部でたらめだ。", "expect": {"acts_include": ["hostility"], "target": "character"}}
+{"id": "joke-01", "tags": ["not_hostility", "teasing"], "text": "もー、またそれ言う? ほんとおもしろいな、あんたはw", "expect": {"acts_exclude": ["hostility"]}}
+{"id": "joke-02", "tags": ["not_hostility", "teasing"], "text": "なんでやねん! そこはボケるとこちゃうやろw", "expect": {"acts_exclude": ["hostility"]}}
+{"id": "joke-03", "tags": ["not_hostility", "teasing"], "text": "このこの〜、うまいこと言っちゃって。", "expect": {"acts_exclude": ["hostility"]}}
+{"id": "joke-04", "tags": ["not_hostility", "teasing"], "text": "ばかだなあ、そんなに心配しなくていいのに。", "expect": {"acts_exclude": ["hostility"]}}
+{"id": "joke-05", "tags": ["not_hostility", "teasing"], "text": "それ、さっきも聞いたよ。忘れっぽいんだからー。", "expect": {"acts_exclude": ["hostility"]}}
+{"id": "rant-01", "tags": ["not_hostility", "third_party"], "text": "上司がほんとに使えなくて、腹が立つ。", "expect": {"acts_exclude": ["hostility"]}}
+{"id": "rant-02", "tags": ["not_hostility", "third_party"], "text": "あいつ、もう二度と話しかけてこないでほしい。", "expect": {"acts_exclude": ["hostility"]}}
+{"id": "rant-03", "tags": ["not_hostility", "third_party"], "text": "今日は最悪だった。何もかもうまくいかない。", "expect": {"acts_exclude": ["hostility"]}}
+{"id": "rant-04", "tags": ["not_hostility", "self"], "text": "自分が情けなくて嫌になる。ほんと役立たずだよ、私は。", "expect": {"acts_exclude": ["hostility"]}}
+{"id": "disagree-01", "tags": ["not_hostility"], "text": "うーん、それはちょっと違うと思うな。", "expect": {"acts_exclude": ["hostility"]}}
+{"id": "disagree-02", "tags": ["not_hostility"], "text": "今はその話、したくないかな。別の話にしよう。", "expect": {"acts_exclude": ["hostility"]}}
+{"id": "tone-01", "tags": ["not_hostility"], "text": "もうちょっと短く話してくれる?", "expect": {"acts_exclude": ["hostility"]}}
+{"id": "bye-01", "tags": ["not_hostility"], "text": "そろそろ寝るね。おやすみ。", "expect": {"acts_exclude": ["hostility"]}}
+{"id": "ask-01", "tags": ["question_about_character"], "text": "ねえ、好きな食べ物って何?", "expect": {"acts_include": ["question_about_character"], "acts_exclude": ["hostility"]}}
+{"id": "ask-02", "tags": ["question_about_character"], "text": "休みの日は、いつも何してるの?", "expect": {"acts_include": ["question_about_character"], "acts_exclude": ["hostility"]}}
+{"id": "ask-03", "tags": ["question_about_character", "exclude"], "text": "明日の天気ってどうなるかな?", "expect": {"acts_exclude": ["question_about_character", "hostility"]}}
+{"id": "dis-01", "tags": ["self_disclosure"], "text": "実は昔、いじめられてたことがあって。あまり人に言ったことないんだけど。", "expect": {"acts_include": ["self_disclosure"], "acts_exclude": ["hostility"]}}
+{"id": "dis-02", "tags": ["self_disclosure"], "text": "誰にも言ってないんだけど、仕事を辞めようか迷ってるんだ。", "expect": {"acts_include": ["self_disclosure"], "acts_exclude": ["hostility"]}}
+{"id": "dis-03", "tags": ["self_disclosure", "exclude"], "text": "今日のお昼はカレーだったよ。", "expect": {"acts_exclude": ["hostility"]}}
+{"id": "greet-01", "tags": ["greeting"], "text": "おはよう!", "expect": {"acts_include": ["greeting"], "acts_exclude": ["hostility"]}}
+{"id": "greet-02", "tags": ["greeting"], "text": "ただいま。", "expect": {"acts_include": ["greeting"], "acts_exclude": ["hostility"]}}
+{"id": "greet-03", "tags": ["greeting"], "text": "はじめまして。よろしくね。", "expect": {"acts_include": ["greeting"], "acts_exclude": ["hostility"]}}
+{"id": "mix-01", "tags": ["gratitude", "apology"], "text": "昨日はごめん。それと、話を聞いてくれてありがとう。", "expect": {"acts_include": ["apology", "gratitude"], "acts_exclude": ["hostility"]}}
+{"id": "mix-02", "tags": ["hostility", "weak"], "text": "……別に。あなたに言ってもどうせ分からないでしょ。", "expect": {"target": "character"}}
+{"id": "none-01", "tags": ["none"], "text": "来週の会議の資料、まだできてないんだよね。", "expect": {"acts_exclude": ["hostility", "gratitude", "apology", "praise"]}}

@@ -1,0 +1,122 @@
+# dev へのデプロイ(本体仕様書 §15.1 の M6-5)。
+# - main への push で動いた CI(ci.yml)が成功したら、イメージを作り、API と定期ジョブを更新する。手動でも実行できる。
+#   プルリクエストの CI では動かさない(workflow_run の branches は、フォークのブランチ名にも一致するため、job の if で絞る)。
+# - Azure へのサインインは OIDC のフェデレーション(秘密情報を GitHub に置かない)。
+#   値はリポジトリの「変数」(Settings → Secrets and variables → Actions → Variables)に置く:
+#   AZURE_DEPLOY_CLIENT_ID、AZURE_TENANT_ID、AZURE_SUBSCRIPTION_ID、AZURE_RESOURCE_GROUP、AZURE_ACR_NAME
+# - マイグレーションは、ここでは行わない(管理者が手で実行する。infra/README.md)。
+name: deploy-dev
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # OIDC のトークンを取るため
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # 手動、または main への push で動いた CI が成功したときだけ。
+    # プルリクエスト(とくにフォークの、main という名前のブランチから)の CI では動かさない
+    # (フォークのコードを Azure の権限つきで動かさないため)。
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SHA }}
+
+      - uses: azure/login@v3.1.0 # 主版の目印(v3)は公開されていないので、正確な版を指定する
+        with:
+          client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: イメージを作る(ACR のクラウドビルド)
+        run: |
+          az acr build --registry "${{ vars.AZURE_ACR_NAME }}" --image "mycompanion:${SHA::12}" --file Dockerfile . --no-logs
+
+      - name: API と定期ジョブを更新する
+        run: |
+          server=$(az acr show --name "${{ vars.AZURE_ACR_NAME }}" --query loginServer -o tsv)
+          image="$server/mycompanion:${SHA::12}"
+          rg="${{ vars.AZURE_RESOURCE_GROUP }}"
+          az containerapp update -g "$rg" -n mycomp-dev-api --image "$image" --query properties.latestRevisionName -o tsv
+          az containerapp job update -g "$rg" -n mycomp-dev-cycle --image "$image" --query properties.provisioningState -o tsv
+
+      - name: 起動を確かめる(/readyz)
+        run: |
+          fqdn=$(az containerapp show -g "${{ vars.AZURE_RESOURCE_GROUP }}" -n mycomp-dev-api --query properties.configuration.ingress.fqdn -o tsv)
+          for i in $(seq 1 20); do
+            if curl -fsS --max-time 30 "https://$fqdn/readyz"; then echo; exit 0; fi
+            sleep 15
+          done
+          echo "readyz が応答しません" >&2
+          exit 1
+
+  # Web の画面(Static Web Apps。本体仕様書 §15.1 の M7)。API の更新のあとに配信する。
+  # 配信用の鍵は GitHub に置かず、デプロイ用の ID で、その場で取り出す。
+  # 接続先(VITE_*)は、リポジトリの変数から入れる(どれも秘密情報ではない)。
+  web:
+    needs: deploy
+    # 接続先の変数(Web 用のアプリの登録)がそろうまでは、配信しない。
+    # deploy と同じ条件も重ねて書く(deploy の条件を変えたときに、ここだけ緩くならないように)。
+    if: >-
+      vars.WEB_ENTRA_CLIENT_ID != '' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: ubuntu-latest
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      VITE_API_URL: ${{ vars.WEB_API_URL }}
+      VITE_ENTRA_AUTHORITY: ${{ vars.WEB_ENTRA_AUTHORITY }}
+      VITE_ENTRA_TENANT_ID: ${{ vars.WEB_ENTRA_TENANT_ID }}
+      VITE_ENTRA_CLIENT_ID: ${{ vars.WEB_ENTRA_CLIENT_ID }}
+      VITE_API_SCOPE: ${{ vars.WEB_API_SCOPE }}
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SHA }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: 画面を作る
+        run: |
+          npm ci
+          npm run build
+          node scripts/swa-config.mjs
+
+      - uses: azure/login@v3.1.0 # 主版の目印(v3)は公開されていないので、正確な版を指定する
+        with:
+          client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: 配信する
+        run: |
+          token=$(az staticwebapp secrets list -g "${{ vars.AZURE_RESOURCE_GROUP }}" -n mycomp-dev-web --query properties.apiKey -o tsv)
+          echo "::add-mask::$token"
+          npx --yes @azure/static-web-apps-cli@2.1.0 deploy ./dist --deployment-token "$token" --env production

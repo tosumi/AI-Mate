@@ -1,0 +1,22 @@
+# コンテナイメージに入れないもの(本体仕様書 §11.5.9)
+# 環境変数のファイル・資格情報・ローカルの作業物は、ビルドのときにアップロードもしない。
+.env
+.env.*
+!.env.example
+.git
+.github
+.claude
+.venv
+.pytest_cache
+.ruff_cache
+**/__pycache__
+*.log
+eval-reports
+tests
+infra
+legal
+personas
+scripts
+*.md
+!README.md
+web

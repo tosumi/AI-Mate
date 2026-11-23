@@ -1,0 +1,39 @@
+# 環境ごとの値(Azure のアカウント・リソース情報など)はコミットしない(本体仕様書 §11.5.9)
+.env
+.env.*
+!.env.example
+
+# Azure CLI / azd / Functions のローカル設定
+.azure/
+local.settings.json
+*.publishsettings
+
+# IaC の環境ごとのパラメータと状態
+*.local.bicepparam
+*.tfvars
+!*.tfvars.example
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Claude Code の作業用ワークツリー(中身はリポジトリに含めない)
+.claude/worktrees/
+# 作業の引き継ぎメモと、手元の開発用サーバーの設定(開発者の手元だけに置く)
+.claude/handovers_*.md
+.claude/launch.json
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+dist/
+
+# 評価の出力(モデルの応答を含むため、コミットしない)
+eval-reports/
+
+# ローカルの実行ログ
+*.log
+# 画面の通しのテスト用の接続先(実在しない値だけ。CI で使う)
+!web/.env.e2e
