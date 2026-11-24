@@ -6,7 +6,10 @@
 import { writeFileSync } from "node:fs";
 
 const api = new URL(required("VITE_API_URL")).origin;
-const login = new URL(required("VITE_ENTRA_AUTHORITY")).origin;
+// サインインの URL: 一般ユーザー(外部テナント)と、運営者(今のテナント。設定したときだけ。§15.1 の M9)
+const logins = [new URL(required("VITE_ENTRA_AUTHORITY")).origin];
+if (process.env.VITE_OPS_TENANT_ID) logins.push("https://login.microsoftonline.com");
+const login = [...new Set(logins)].join(" ");
 
 const csp = [
   "default-src 'self'",

@@ -30,11 +30,15 @@ from pydantic import BaseModel, ConfigDict, Field
 from mycompanion import config as cfg
 from mycompanion import telemetry
 from mycompanion.account.service import AccountError, AccountOps
-from mycompanion.api.auth import AuthError, TokenVerifier
+from mycompanion.api.auth import AuthError, OperatorTokenVerifier, TokenVerifier
+from mycompanion.api.ops import create_ops_router
 from mycompanion.channel.types import TurnInput, TurnOutput
 from mycompanion.engine.engine import Engine, EngineError
 from mycompanion.engine.memory_ops import MemoryOpError, MemoryOps
 from mycompanion.llm.client import Persona
+from mycompanion.ops.audit import OperatorAuditLog
+from mycompanion.ops.metrics import SystemMetrics
+from mycompanion.ops.store import OperatorStore
 from mycompanion.push.service import PushService, Subscription, keyvault_loader, push_subject
 
 HealthCheck = Callable[[], Awaitable[bool]]
@@ -89,6 +93,11 @@ class AppDeps:
     on_shutdown: list[Callable[[], Awaitable[None]]] = field(default_factory=list)
     # Web の画面の配信元(CORS で許す。空なら許さない。§15.1 の M7)
     web_origins: tuple[str, ...] = ()
+    # 運営者の認証と監査ログ(§15.1 の M9。設定していなければ None で、運営者の API は 503)
+    ops_verifier: OperatorTokenVerifier | None = None
+    ops_audit: OperatorAuditLog | None = None
+    ops_store: OperatorStore | None = None
+    ops_metrics: SystemMetrics | None = None
 
 
 @dataclass(frozen=True)
@@ -267,7 +276,7 @@ def create_app(deps: AppDeps) -> FastAPI:
             CORSMiddleware,
             allow_origins=list(deps.web_origins),
             allow_credentials=False,
-            allow_methods=["GET", "POST", "PUT", "DELETE"],
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],  # PATCH: 運営者の報告の更新(M9)
             allow_headers=["Authorization", "Content-Type"],
             max_age=600,
         )
@@ -684,6 +693,8 @@ def create_app(deps: AppDeps) -> FastAPI:
             user.user_id, changes, allow_age_flag=deps.env_name != "prod"
         )
 
+    # 運営者の API(§15.1 の M9。一般ユーザーの API とは、経路とトークンを分ける)
+    app.include_router(create_ops_router())
     return app
 
 
@@ -705,21 +716,25 @@ def _web_origins() -> tuple[str, ...]:
 def create_app_from_env() -> FastAPI:
     """環境変数から依存先を組み立てて、アプリを作る(本番・開発用)。"""
     from mycompanion.account.store import PgAccountStore
-    from mycompanion.api.auth import EntraTokenVerifier
+    from mycompanion.api.auth import EntraOperatorTokenVerifier, EntraTokenVerifier
     from mycompanion.db.cosmos import open_cosmos
     from mycompanion.db.memory_store import PgMemoryStore
+    from mycompanion.db.ops_store import PgOperatorAuditLog, PgOperatorStore
     from mycompanion.db.postgres import Database
     from mycompanion.db.push_store import PgPushStore
     from mycompanion.db.stores import PgCosmosStores
     from mycompanion.db.topic_store import PgTopicStore
     from mycompanion.llm.azure_openai import AzureOpenAILLMClient
     from mycompanion.memory.service import MemoryManager
+    from mycompanion.ops.metrics import ArmMonitorClient
 
     settings = cfg.EngineSettings()
     telemetry.quiet_sdk_logs()
     telemetry.configure("mycompanion-api")
     # 必要な環境変数が欠けていれば、ここで起動エラーにする(§11.5.9)
     verifier = EntraTokenVerifier(cfg.AuthConfig.from_env())
+    # 運営者の認証(社内向けの Entra ID。設定がなければ、運営者の API は使えない。§15.1 の M9)
+    ops_config = cfg.OperatorAuthConfig.from_env()
     database = Database(cfg.PostgresConfig.from_env())
     cosmos_config = cfg.CosmosConfig.from_env()
     openai_config = cfg.AzureOpenAIConfig.from_env()
@@ -731,6 +746,7 @@ def create_app_from_env() -> FastAPI:
         env_name=cfg.environment_name(),
         health_checks={"postgres": database.ping},
         web_origins=_web_origins(),
+        ops_verifier=EntraOperatorTokenVerifier(ops_config) if ops_config else None,
     )
 
     async def startup() -> None:
@@ -749,6 +765,16 @@ def create_app_from_env() -> FastAPI:
         deps.engine = Engine(llm, stores, settings, manager)
         deps.memory_ops = MemoryOps(stores, manager, settings)
         deps.characters = stores
+        # 運営者の監査ログ(運営者の認証を設定しているときだけ)
+        if deps.ops_verifier is not None:
+            deps.ops_audit = PgOperatorAuditLog(database)
+            deps.ops_store = PgOperatorStore(database, cosmos_stores)
+            # ダッシュボード(対象のリソースの設定がなければ、すべて「未設定」と表示する)
+            monitor_config = cfg.OperatorMonitorConfig.from_env()
+            monitor_client = ArmMonitorClient() if monitor_config else None
+            deps.ops_metrics = SystemMetrics(monitor_config, monitor_client)
+            if monitor_client is not None:
+                deps.on_shutdown.append(monitor_client.close)
         # 通知(Web Push)。VAPID の秘密鍵は Key Vault から読む。Key Vault の設定がなければ、通知は使わない
         vault_uri = (os.environ.get("KEY_VAULT_URI") or "").strip()
         if vault_uri:

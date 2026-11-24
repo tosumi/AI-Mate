@@ -59,6 +59,10 @@ param entraApiAudience string = ''
 param entraApiScope string = ''
 @description('外部テナントのアカウントの削除に使うアプリ(未設定なら、削除は保留のまま。§15.1 の M6-3)')
 param entraDirectoryClientId string = ''
+// 運営者の認証(今のテナント。§15.1 の M9)。未設定なら、運営者の API は使えない(503)
+param opsTenantId string = ''
+param opsApiAudience string = ''
+param opsApiScope string = ''
 
 @description('GitHub のリポジトリ(owner/name)。空でなければ、GitHub Actions からデプロイする ID を作る(§15.1 の M6-5)')
 param githubRepository string = ''
@@ -99,6 +103,7 @@ var roles = {
   acrPull: '7f951dda-4ed3-4680-a7ca-43fe172d538d'
   contributor: 'b24988ac-6180-42a0-ab88-20f7382dd24c'
   managedIdentityOperator: 'f1a07417-d97a-45cb-824c-7a7467783830'
+  monitoringReader: '43d0d8ad-25c7-4714-9337-8ba259a9fe05'
 }
 // データへのアクセスを与える主体: アプリのマネージド ID と、dev では開発者。
 // ループの対象は、デプロイの開始時に決まる値だけにする(マネージド ID の principalId は
@@ -504,6 +509,30 @@ var appSecrets = [
   }
 ]
 
+// 運営者の API だけが使う環境変数(§15.1 の M9)。ダッシュボードの対象は、このファイルのリソースの ID(コードに書かない)
+var useOps = deployContainerApps && !empty(opsTenantId)
+var opsEnv = useOps ? [
+  { name: 'OPS_ENTRA_TENANT_ID', value: opsTenantId }
+  { name: 'OPS_ENTRA_API_AUDIENCE', value: opsApiAudience }
+  { name: 'OPS_ENTRA_API_SCOPE', value: opsApiScope }
+  { name: 'OPS_MONITOR_API_APP_ID', value: resourceId('Microsoft.App/containerApps', '${base}-api') }
+  { name: 'OPS_MONITOR_WORKER_JOB_ID', value: resourceId('Microsoft.App/jobs', '${base}-cycle') }
+  { name: 'OPS_MONITOR_POSTGRES_ID', value: postgres.id }
+  { name: 'OPS_MONITOR_COSMOS_ID', value: cosmos.id }
+  { name: 'OPS_MONITOR_LOG_WORKSPACE_ID', value: logs.id }
+  { name: 'OPS_MONITOR_OPENAI_ID', value: openAi.id }
+] : []
+
+// ダッシュボードのため、アプリのマネージド ID に、リソースグループの「監視の閲覧者」(読み取りだけ)を与える
+resource opsMonitoringReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (useOps) {
+  name: guid(resourceGroup().id, identity.id, roles.monitoringReader)
+  properties: {
+    principalId: identity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.monitoringReader)
+  }
+}
+
 resource apiApp 'Microsoft.App/containerApps@2024-03-01' = if (deployContainerApps) {
   name: '${base}-api'
   location: location
@@ -525,7 +554,7 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = if (deployContainerAp
           name: 'api'
           image: apiImage
           resources: { cpu: json('0.5'), memory: '1Gi' }
-          env: appEnv
+          env: concat(appEnv, opsEnv)
           probes: [
             { type: 'Liveness', httpGet: { path: '/healthz', port: 8080 } }
             { type: 'Readiness', httpGet: { path: '/readyz', port: 8080 } }

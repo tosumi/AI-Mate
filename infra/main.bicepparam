@@ -19,3 +19,6 @@ param githubRepository = readEnvironmentVariable('AZURE_GITHUB_REPOSITORY', '')
 param githubOidcSubject = readEnvironmentVariable('AZURE_GITHUB_OIDC_SUBJECT', '')
 param alertEmail = readEnvironmentVariable('AZURE_ALERT_EMAIL', '')
 param deployWeb = readEnvironmentVariable('AZURE_DEPLOY_WEB', 'false') == 'true'
+param opsTenantId = readEnvironmentVariable('OPS_ENTRA_TENANT_ID', '')
+param opsApiAudience = readEnvironmentVariable('OPS_ENTRA_API_AUDIENCE', '')
+param opsApiScope = readEnvironmentVariable('OPS_ENTRA_API_SCOPE', '')

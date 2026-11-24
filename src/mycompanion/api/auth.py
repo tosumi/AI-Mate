@@ -14,7 +14,7 @@ from typing import Any, Protocol
 import httpx
 import jwt
 
-from mycompanion.config import AuthConfig
+from mycompanion.config import AuthConfig, OperatorAuthConfig
 
 IDP_ENTRA_EXTERNAL_ID = "entra_external_id"
 
@@ -35,10 +35,10 @@ class TokenVerifier(Protocol):
     async def verify(self, token: str) -> Principal: ...
 
 
-class EntraTokenVerifier:
-    """Entra External ID(外部テナント)のアクセストークンを検証する。"""
+class _JwtVerifier:
+    """OpenID Connect のメタデータから発行者と署名鍵を取り、アクセストークンの署名・iss・aud・期限を検証する。"""
 
-    def __init__(self, config: AuthConfig, http_client: httpx.AsyncClient | None = None) -> None:
+    def __init__(self, config: AuthConfig | OperatorAuthConfig, http_client: httpx.AsyncClient | None = None) -> None:
         self._config = config
         self._http = http_client
         self._issuer: str | None = None
@@ -61,7 +61,7 @@ class EntraTokenVerifier:
                 self._jwks = jwt.PyJWKClient(metadata["jwks_uri"], cache_keys=True, lifespan=3600)
             return self._issuer, self._jwks
 
-    async def verify(self, token: str) -> Principal:
+    async def _claims(self, token: str) -> dict[str, Any]:
         try:
             issuer, jwks = await self._ensure_metadata()
             # 鍵の取得は同期の HTTP 呼び出しなので、スレッドで実行する
@@ -78,7 +78,14 @@ class EntraTokenVerifier:
             raise
         except Exception as exc:
             raise AuthError("トークンを検証できません") from exc
-        return principal_from_claims(claims, self._config.scope_name)
+        return claims
+
+
+class EntraTokenVerifier(_JwtVerifier):
+    """Entra External ID(外部テナント)のアクセストークンを検証する。"""
+
+    async def verify(self, token: str) -> Principal:
+        return principal_from_claims(await self._claims(token), self._config.scope_name)
 
 
 def principal_from_claims(claims: dict[str, Any], required_scope: str) -> Principal:
@@ -91,3 +98,44 @@ def principal_from_claims(claims: dict[str, Any], required_scope: str) -> Princi
     if not subject:
         raise AuthError("サブジェクトがありません")
     return Principal(idp=IDP_ENTRA_EXTERNAL_ID, subject=str(subject))
+
+
+@dataclass(frozen=True)
+class OperatorPrincipal:
+    """検証済みの運営者(社内向けの Entra ID。§15.1 の M9)。氏名・メールアドレスは持たない。"""
+
+    object_id: str  # 運営者のテナントのオブジェクト ID
+    tenant_id: str
+    roles: frozenset[str]  # アプリのロール(トークンの roles)
+
+
+class OperatorTokenVerifier(Protocol):
+    async def verify(self, token: str) -> OperatorPrincipal: ...
+
+
+class EntraOperatorTokenVerifier(_JwtVerifier):
+    """運営者のテナントのアクセストークンを検証する(一般ユーザーのトークンは、発行者・対象が違うので通らない)。"""
+
+    def __init__(self, config: OperatorAuthConfig, http_client: httpx.AsyncClient | None = None) -> None:
+        super().__init__(config, http_client)
+        self._operator_config = config
+
+    async def verify(self, token: str) -> OperatorPrincipal:
+        return operator_from_claims(await self._claims(token), self._operator_config)
+
+
+def operator_from_claims(claims: dict[str, Any], config: OperatorAuthConfig) -> OperatorPrincipal:
+    """検証済みのクレームから、運営者を作る。テナント・スコープ・(設定により)MFA を確かめる。"""
+    if str(claims.get("tid", "")) != config.tenant_id:
+        raise AuthError("テナントが違います")
+    if config.scope_name not in str(claims.get("scp", "")).split():
+        raise AuthError("必要なスコープがありません")
+    if config.require_mfa_claim and "mfa" not in [str(m) for m in claims.get("amr") or []]:
+        raise AuthError("多要素認証が必要です")
+    object_id = claims.get("oid")
+    if not object_id:
+        raise AuthError("サブジェクトがありません")
+    roles = claims.get("roles") or []
+    return OperatorPrincipal(
+        object_id=str(object_id), tenant_id=config.tenant_id, roles=frozenset(str(r) for r in roles)
+    )

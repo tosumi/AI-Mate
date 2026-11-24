@@ -89,6 +89,10 @@ jobs:
       VITE_ENTRA_TENANT_ID: ${{ vars.WEB_ENTRA_TENANT_ID }}
       VITE_ENTRA_CLIENT_ID: ${{ vars.WEB_ENTRA_CLIENT_ID }}
       VITE_API_SCOPE: ${{ vars.WEB_API_SCOPE }}
+      # 運営者の画面(/ops。今のテナント。§15.1 の M9)。未設定なら、運営者の画面は「使えません」と表示する
+      VITE_OPS_TENANT_ID: ${{ vars.WEB_OPS_TENANT_ID }}
+      VITE_OPS_CLIENT_ID: ${{ vars.WEB_OPS_CLIENT_ID }}
+      VITE_OPS_API_SCOPE: ${{ vars.WEB_OPS_API_SCOPE }}
     defaults:
       run:
         working-directory: web

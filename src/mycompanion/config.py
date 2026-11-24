@@ -186,6 +186,73 @@ class AuthConfig:
 
 
 @dataclass(frozen=True)
+class OperatorAuthConfig:
+    """運営者の認証(社内向けの Entra ID。今の Azure のテナント。§13.7、§15.1 の M9)。
+
+    一般ユーザーの外部テナントとは別のテナント・別のアプリ。値は環境変数で渡す(コードに書かない)。
+    """
+
+    tenant_id: str
+    audience: str  # 運営者の API のアプリ登録(アプリ ID の URI か、クライアント ID)
+    scope: str  # 画面が要求するスコープ(完全な形式)
+    # トークンの amr に "mfa" があることを求める(テナントで MFA を必須にしたうえでの、念のための確認)
+    require_mfa_claim: bool = False
+
+    @property
+    def scope_name(self) -> str:
+        return self.scope.rsplit("/", 1)[-1]
+
+    @property
+    def metadata_url(self) -> str:
+        return f"https://login.microsoftonline.com/{self.tenant_id}/v2.0/.well-known/openid-configuration"
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] | None = None) -> OperatorAuthConfig | None:
+        """設定がなければ None(運営者の API は使えない)。一部だけ設定されていれば、エラーにする。"""
+        env = os.environ if env is None else env
+        names = ["OPS_ENTRA_TENANT_ID", "OPS_ENTRA_API_AUDIENCE", "OPS_ENTRA_API_SCOPE"]
+        if all(_get(env, name) is None for name in names):
+            return None
+        values = _require(env, names, "運営者の認証(社内向けの Entra ID)")
+        return cls(
+            tenant_id=values["OPS_ENTRA_TENANT_ID"],
+            audience=values["OPS_ENTRA_API_AUDIENCE"],
+            scope=values["OPS_ENTRA_API_SCOPE"],
+            require_mfa_claim=(_get(env, "OPS_REQUIRE_MFA_CLAIM") or "").lower() in ("1", "true", "yes"),
+        )
+
+
+# ダッシュボードの対象のリソース(Azure のリソース ID。IaC が環境変数に設定する)。名前 → 環境変数
+MONITOR_RESOURCE_ENV = {
+    "api": "OPS_MONITOR_API_APP_ID",  # Container Apps(API)
+    "worker": "OPS_MONITOR_WORKER_JOB_ID",  # Container Apps のジョブ(ワーカー)
+    "postgres": "OPS_MONITOR_POSTGRES_ID",
+    "cosmos": "OPS_MONITOR_COSMOS_ID",
+    "logs": "OPS_MONITOR_LOG_WORKSPACE_ID",  # Log Analytics
+    "openai": "OPS_MONITOR_OPENAI_ID",
+}
+
+
+@dataclass(frozen=True)
+class OperatorMonitorConfig:
+    """ダッシュボード(Azure Monitor のメトリック。§15.1 の M9)。設定のないリソースは「未設定」と表示する。
+
+    リソース ID はサブスクリプションの ID を含むので、ログ・応答には出さない。
+    """
+
+    resources: dict[str, str]
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] | None = None) -> OperatorMonitorConfig | None:
+        env = os.environ if env is None else env
+        resources = {name: value for name, var in MONITOR_RESOURCE_ENV.items() if (value := _get(env, var))}
+        for value in resources.values():
+            if not value.startswith("/subscriptions/"):
+                raise ConfigError("ダッシュボードの対象のリソース ID の形式が正しくありません(OPS_MONITOR_*)")
+        return cls(resources) if resources else None
+
+
+@dataclass(frozen=True)
 class CliConfig:
     """CLI(API を呼ぶ薄いクライアント。§11.5.8)。"""
 
