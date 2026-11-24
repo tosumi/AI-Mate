@@ -42,7 +42,7 @@ export async function mockApi(
     proactive?: ProactiveFixture[];
     push?: boolean;
     // いまの会話の続き(キャラクタ → ターン)。画面を開き直したときに読み直す
-    conversation?: Record<string, { session_id: string; turns: { turn_no: number; user_input: string; reply_text: string | null; response_mode: string }[] }>;
+    conversation?: Record<string, { session_id: string | null; turns: { session_id?: string; turn_no: number; user_input: string; reply_text: string | null; response_mode: string }[] }>;
   } = {},
 ): Promise<Recorded> {
   const recorded: Recorded = {

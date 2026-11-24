@@ -149,8 +149,8 @@ def test_render_debug_summary(env):
     assert "anticipation" in text and "旅行" in text
 
 
-def test_current_conversation_is_returned_until_the_idle_timeout(env):
-    # 画面を開き直したときに、会話の続きを表示する(本人の会話だけ。無入力で終わった会話は返さない)
+def test_conversation_returns_recent_turns_even_after_the_idle_timeout(env):
+    # 画面を開いたときに、これまでの会話を表示する(本人の会話だけ。2026-11-23 から、終わった会話も返す)
     import asyncio
     from datetime import UTC, datetime, timedelta
 
@@ -160,14 +160,33 @@ def test_current_conversation_is_returned_until_the_idle_timeout(env):
     data = client.get("/v1/conversation?character_id=char_1", headers=_auth("a")).json()
     assert [t["user_input"] for t in data["turns"]] == ["今日は楽しい", "明日も晴れるといいな"]
     assert [t["turn_no"] for t in data["turns"]] == [1, 2] and data["session_id"]
-    assert all(t["reply_text"] for t in data["turns"])
+    assert all(t["reply_text"] and t["session_id"] == data["session_id"] for t in data["turns"])
     assert client.get("/v1/conversation?character_id=char_1", headers=_auth("b")).json() == {
         "session_id": None, "turns": []
     }
     assert client.get("/v1/conversation?character_id=char_1").status_code == 401
-    # 無入力の期限(30分)を過ぎたら、返さない
+    # 無入力の期限(30分)を過ぎても、ターンは返す(進行中の会話ではないので、session_id は None)
     (key,) = stores.turns
     engine = client.app.state.deps.engine
     later = max(t.ts for t in stores.turns[key]) + timedelta(minutes=31)
-    assert asyncio.run(engine.current_conversation(key[0], "char_1", now=later)) is None
+    old = asyncio.run(engine.current_conversation(key[0], "char_1", now=later))
+    assert old is not None and old["session_id"] is None
+    assert [t["user_input"] for t in old["turns"]] == ["今日は楽しい", "明日も晴れるといいな"]
     assert datetime.now(UTC) - later < timedelta(days=1)
+
+
+def test_conversation_spans_sessions_and_keeps_only_the_latest_turns(env):
+    # 終わった会話と新しい会話をまたいで、直近の件数だけ、古い順に返す。各ターンに、そのセッションを付ける
+    client, _, _ = env
+    client.post("/v1/turns", json=_body("前の会話"), headers=_auth("a"))
+    client.post("/v1/sessions/close", json={"character_id": "char_1"}, headers=_auth("a"))
+    client.post("/v1/turns", json=_body("新しい会話"), headers=_auth("a"))
+    data = client.get("/v1/conversation?character_id=char_1", headers=_auth("a")).json()
+    assert [t["user_input"] for t in data["turns"]] == ["前の会話", "新しい会話"]
+    first, second = data["turns"]
+    assert first["session_id"] != second["session_id"] and second["session_id"] == data["session_id"]
+    client.app.state.deps.engine._settings = client.app.state.deps.engine._settings.model_copy(
+        update={"conversation_restore_turns": 1}
+    )
+    data = client.get("/v1/conversation?character_id=char_1", headers=_auth("a")).json()
+    assert [t["user_input"] for t in data["turns"]] == ["新しい会話"]

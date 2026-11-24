@@ -11,7 +11,7 @@ type Action =
   | { type: "sent"; characterId: string; text: string }
   | { type: "event"; characterId: string; event: string; data: unknown }
   | { type: "proactive"; characterId: string; message: ProactiveMessage }
-  | { type: "restore"; characterId: string; sessionId: string; turns: ConversationTurn[] };
+  | { type: "restore"; characterId: string; sessionId: string | null; turns: ConversationTurn[] };
 
 type Chats = Record<string, ChatState>;
 
@@ -83,6 +83,8 @@ export function Chat({ api }: Props) {
   const opened = useRef(new Set<string>());
   // 開いているキャラクタに、あとから届いた自発発話: 応答の途中でなければ、すぐ表示する
   const settled = useRef(new Set<string>());
+  // これまでの会話を読み終えたキャラクタ(読み終えるまで「読み込んでいます…」を出す。2026-11-23 のユーザーの指示)
+  const [restored, setRestored] = useState<Record<string, boolean>>({});
   useEffect(() => {
     if (!characterId || pending === null) return;
     const id = characterId;
@@ -90,14 +92,17 @@ export function Chat({ api }: Props) {
     if (!opened.current.has(id)) {
       opened.current.add(id);
       (async () => {
+        // これまでの会話(終わった会話も含む)を表示する
         const current = await api.conversation(id).catch(() => null);
-        if (current?.session_id && current.turns.length > 0) {
+        if (current && current.turns.length > 0) {
           dispatch({ type: "restore", characterId: id, sessionId: current.session_id, turns: current.turns });
         }
         settled.current.add(id);
+        setRestored((all) => ({ ...all, [id]: true }));
         if (message && !shown.current.has(key(message))) {
           // 読み直した会話に、そのメッセージが入っていなければ、表示する
-          if (current?.session_id !== message.session_id) dispatch({ type: "proactive", characterId: id, message });
+          const included = current?.turns.some((t) => (t.session_id ?? current.session_id) === message.session_id);
+          if (!included) dispatch({ type: "proactive", characterId: id, message });
           seen(id, message);
         }
       })();
@@ -187,6 +192,11 @@ export function Chat({ api }: Props) {
       </header>
       {loadError && <p role="alert">{loadError}</p>}
       <div className="chat-log" aria-live="polite">
+        {!loadError && !(characterId && restored[characterId]) && (
+          <p className="loading" aria-busy="true">
+            読み込んでいます…
+          </p>
+        )}
         {state.bubbles.map((bubble) => (
           <BubbleView key={bubble.id} bubble={bubble} api={api} characterId={characterId} name={name} />
         ))}

@@ -75,6 +75,7 @@ export function Account({ api, onDeleted, active = true }: Props) {
 
       <h2>同意</h2>
       <p className="hint">同意書 版 {status?.version}。必須の同意を取り消すと、会話できなくなります。</p>
+      {!status && !message && <p aria-busy="true">読み込んでいます…</p>}
       <ul className="items">
         {items.map((item) => (
           <li key={item.type}>

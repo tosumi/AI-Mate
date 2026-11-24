@@ -96,4 +96,15 @@ describe("いまの会話の続きを読み直す", () => {
     expect(state.busy).toBe(false);
     expect(state.nextId).toBe(7);
   });
+
+  it("終わった会話もまたいで表示し、評価・報告は、それぞれのターンのセッションに向ける", () => {
+    const state = restore(null, [
+      { session_id: "old", turn_no: 3, user_input: "昨日の話", reply_text: "覚えてるよ", response_mode: "full" },
+      { session_id: "new", turn_no: 1, user_input: "", reply_text: "そういえば", response_mode: "proactive" },
+    ]);
+    expect(state.bubbles.filter((b) => b.kind === "character").map((b) => ("sessionId" in b ? [b.sessionId, b.turnNo] : null))).toEqual([
+      ["old", 3],
+      ["new", 1],
+    ]);
+  });
 });

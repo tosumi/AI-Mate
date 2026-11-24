@@ -313,6 +313,8 @@ class EngineSettings(BaseModel):
     memory_scheduler_scan_interval_minutes: int = Field(default=60, ge=1)
     memory_catchup_max_days: int = Field(default=31, ge=1)
     session_idle_timeout_minutes: int = Field(default=30, ge=1)
+    # 画面を開いたときに表示する、これまでの会話のターン数(終わった会話も含む。2026-11-23 のユーザーの指示)
+    conversation_restore_turns: int = Field(default=20, ge=1, le=100)
     memory_monthly_summary_enabled: bool = True
     memory_monthly_day: int = Field(default=1, ge=1, le=28)
     memory_medium_retention_days: int = Field(default=90, ge=45)  # 45日未満は設定不可

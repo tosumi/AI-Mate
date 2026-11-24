@@ -30,7 +30,8 @@ export type Settings = {
   filter_mode?: string;
   is_under_18?: boolean;
 };
-export type ConversationTurn = { turn_no: number; user_input: string; reply_text: string | null; response_mode: string };
+// 各ターンのセッション(評価・報告の対象)。古いサーバーは付けないので、そのときは会話の session_id を使う
+export type ConversationTurn = { session_id?: string; turn_no: number; user_input: string; reply_text: string | null; response_mode: string };
 export type Conversation = { session_id: string | null; turns: ConversationTurn[] };
 /** キャラクタから話しかけたメッセージ(まだ表示していないもの。§15.1 の M8)。 */
 export type ProactiveMessage = { character_id: string; name: string; session_id: string; turn_no: number; text: string; ts: string };

@@ -1528,31 +1528,36 @@ class Engine:
     async def current_conversation(
         self, user_id: uuid.UUID, character_id: str, now: datetime | None = None
     ) -> dict[str, Any] | None:
-        """いまの会話(進行中のセッションのターン)。画面を開き直したときに、会話の続きを表示するため。
+        """これまでの会話(直近のターン。終わった会話も含む)。画面を開いたときに、続きとして表示するため。
 
-        無入力の期限(既定30分)を過ぎた会話は返さない(次の発話は、新しいセッションになる)。返事を待っている
-        自発発話だけのセッションは、返事を待つ期限まで返す。本人の会話だけ(user_id はトークンから決める)。
+        2026-11-23 のユーザーの指示で、無入力で終わった会話も表示する(以前は進行中の会話だけ)。
+        セッションをまたいで、直近の `conversation_restore_turns` 件を古い順に返す。各ターンにセッションを付ける
+        (評価・報告の対象)。`session_id` は、いま進行中の会話のセッション(無入力の期限を過ぎていれば None。
+        返事を待っている自発発話だけのセッションは、返事を待つ期限まで進行中とみなす)。
+        本人の会話だけ(user_id はトークンから決める)。
         """
         now = now or datetime.now(UTC)
-        session_id = await self._stores.current_session_id(user_id, character_id)
-        if session_id is None:
-            return None
-        turns = await self._stores.session_turns(user_id, character_id, session_id)
+        turns = await self._stores.latest_turns(user_id, character_id, self._settings.conversation_restore_turns)
         if not turns:
             return None
-        last = turns[-1].get("ts")
-        waiting = len(turns) == 1 and turns[0].get("response_mode") == "proactive"
-        limit = timedelta(
-            hours=self._settings.proactive_reply_window_hours
-        ) if waiting else timedelta(minutes=self._settings.session_idle_timeout_minutes)
-        if isinstance(last, datetime) and now - last > limit:
-            return None
+        current: str | None = None
+        session_id = await self._stores.current_session_id(user_id, character_id)
+        own = [t for t in turns if session_id is not None and str(t.get("session_id")) == str(session_id)]
+        if own:
+            last = own[-1].get("ts")
+            waiting = len(own) == 1 and own[0].get("response_mode") == "proactive"
+            limit = timedelta(
+                hours=self._settings.proactive_reply_window_hours
+            ) if waiting else timedelta(minutes=self._settings.session_idle_timeout_minutes)
+            if not (isinstance(last, datetime) and now - last > limit):
+                current = str(session_id)
         return {
-            "session_id": str(session_id),
+            "session_id": current,
             "turns": [
                 {
-                    "turn_no": t.get("turn_no"), "user_input": t.get("user_input") or "",
-                    "reply_text": t.get("reply_text"), "response_mode": t.get("response_mode"),
+                    "session_id": str(t.get("session_id")), "turn_no": t.get("turn_no"),
+                    "user_input": t.get("user_input") or "", "reply_text": t.get("reply_text"),
+                    "response_mode": t.get("response_mode"),
                 }
                 for t in turns
             ],

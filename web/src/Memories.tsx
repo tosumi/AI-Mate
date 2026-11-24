@@ -60,7 +60,15 @@ export function Memories({ api, active = true }: { api: Api; active?: boolean })
       <div className="page-bar">
         <label>
           キャラクタ{" "}
-          <select value={characterId} onChange={(e) => setCharacterId(e.target.value)}>
+          <select
+            value={characterId}
+            onChange={(e) => {
+              // 前のキャラクタの記憶を出したままにしない(読み終えるまで「読み込んでいます…」)
+              setMemories(null);
+              setTopics([]);
+              setCharacterId(e.target.value);
+            }}
+          >
             {characters.map((c) => (
               <option key={c.character_id} value={c.character_id}>
                 {c.name}
@@ -75,7 +83,9 @@ export function Memories({ api, active = true }: { api: Api; active?: boolean })
       {message && <p role="status">{message}</p>}
 
       <h2>話題ごとの経過</h2>
-      {topics.length === 0 ? (
+      {memories === null ? (
+        <p aria-busy="true">読み込んでいます…</p>
+      ) : topics.length === 0 ? (
         <p className="empty">まだありません。</p>
       ) : (
         <ul className="items">

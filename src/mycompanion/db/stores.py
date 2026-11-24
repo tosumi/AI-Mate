@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import asdict
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import psycopg
@@ -203,6 +203,25 @@ class PgCosmosStores:
             }
             for item in items
         ]
+
+    async def latest_turns(self, user_id: uuid.UUID, character_id: str, limit: int) -> list[dict[str, Any]]:
+        items = [
+            item
+            async for item in self._cosmos.turns.query(user_id, character_id, order_by="c.ts DESC", limit=limit)
+        ]
+        turns = [
+            {
+                "session_id": item.get("sessionId"),
+                "turn_no": item.get("turnNo", 0),
+                "user_input": item.get("user_input", ""),
+                "reply_text": item.get("reply_text") or item.get("filtered_text") or item.get("draft_text"),
+                "response_mode": item.get("response_mode", "full"),
+                "ts": _parse_ts(item.get("ts")),
+            }
+            for item in items
+        ]
+        # 古い順に並べ直す(同じ時刻なら、ターン番号の順)
+        return sorted(turns, key=lambda t: (t["ts"] or datetime.min.replace(tzinfo=UTC), t["turn_no"]))
 
     async def delete_turns(self, user_id: uuid.UUID, character_id: str, turn_ids: list[str]) -> int:
         count = 0

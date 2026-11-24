@@ -222,6 +222,10 @@ class EngineStores(Protocol):
         """セッションのターン(古い順)。短期記憶の書き込みに使う(§9.4.1)。"""
         ...
 
+    async def latest_turns(self, user_id: uuid.UUID, character_id: str, limit: int) -> list[dict[str, Any]]:
+        """このキャラクタとの直近のターン(セッションをまたぐ。古い順に最大 limit 件)。画面を開いたときに表示する。"""
+        ...
+
     async def delete_turns(self, user_id: uuid.UUID, character_id: str, turn_ids: list[str]) -> int:
         """指定のターンと、それに紐づく感情の推定を削除する(記憶の削除の伝播。§9.7)。"""
         ...
@@ -429,6 +433,14 @@ class InMemoryStores:
              "reply_model": t.reply_model, "reply_prompt_version": t.reply_prompt_version, "ts": t.ts}
             for t in self.turns.get((user_id, character_id), [])
             if t.session_id == session_id
+        ]  # fmt: skip
+
+    async def latest_turns(self, user_id: uuid.UUID, character_id: str, limit: int) -> list[dict[str, Any]]:
+        turns = sorted(self.turns.get((user_id, character_id), []), key=lambda t: (t.ts, t.turn_no))[-limit:]
+        return [
+            {"session_id": t.session_id, "turn_no": t.turn_no, "user_input": t.user_input,
+             "reply_text": t.reply_text, "response_mode": t.response_mode, "ts": t.ts}
+            for t in turns
         ]  # fmt: skip
 
     async def delete_turns(self, user_id: uuid.UUID, character_id: str, turn_ids: list[str]) -> int:

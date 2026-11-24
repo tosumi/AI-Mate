@@ -46,15 +46,15 @@ export function proactive(state: ChatState, message: { text: string; sessionId: 
   return { ...state, bubbles: [...state.bubbles, bubble], nextId: state.nextId + 1 };
 }
 
-/** サーバーから読み直した、いまの会話の続きを、吹き出しにする(画面を開き直したとき)。 */
+/** サーバーから読み直した、これまでの会話を、吹き出しにする(画面を開いたとき。終わった会話も含む)。 */
 export function restore(
-  sessionId: string,
-  turns: { turn_no: number; user_input: string; reply_text: string | null; response_mode: string }[],
+  sessionId: string | null,
+  turns: { session_id?: string; turn_no: number; user_input: string; reply_text: string | null; response_mode: string }[],
 ): ChatState {
   const bubbles: Bubble[] = [];
   let id = 1;
   for (const turn of turns) {
-    const target = { sessionId, turnNo: turn.turn_no };
+    const target = { sessionId: turn.session_id ?? sessionId ?? "", turnNo: turn.turn_no };
     if (turn.response_mode === "proactive") {
       bubbles.push({ id: id++, kind: "character", text: turn.reply_text ?? "", status: "final", variant: "message", ...target, proactive: true });
       continue;

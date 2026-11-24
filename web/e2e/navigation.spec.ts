@@ -103,3 +103,61 @@ test("ページの見出しは画面に出さず、キャラクタの選択の�
   const memories = page.getByRole("region", { name: "記憶" });
   await expect(memories.getByLabel("キャラクタ")).toBeInViewport();
 });
+
+test("ログインした最初の画面に、終わった会話も含めて、これまでの会話を表示する", async ({ page }) => {
+  await mockApi(page, () => ({ events: normalReply("また話せてうれしい") }), {
+    consented: true,
+    conversation: {
+      // 無入力で終わった会話(進行中ではないので session_id は null。各ターンにセッションが付く)
+      sample_oshaberi: {
+        session_id: null,
+        turns: [
+          { session_id: "66666666-6666-6666-6666-666666666666", turn_no: 1, user_input: "豚丼に名前を付けたよ", reply_text: "しあわせの豚丼、いい名前!", response_mode: "full" },
+        ],
+      },
+    },
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "メールでサインイン" }).click();
+  const chat = page.getByRole("region", { name: "会話" });
+  // 何も操作しなくても、最初の画面に出る
+  await expect(chat.getByText("豚丼に名前を付けたよ")).toBeVisible();
+  await expect(chat.getByText("しあわせの豚丼、いい名前!")).toBeVisible();
+  // 続けて話すと、これまでの会話のあとに続く
+  await chat.getByRole("textbox", { name: "メッセージ" }).fill("ありがとう");
+  await chat.getByRole("button", { name: "送信" }).click();
+  await expect(chat.getByText("また話せてうれしい")).toBeVisible();
+  await expect(chat.locator(".bubble.user")).toHaveText([/豚丼に名前を付けたよ/, /ありがとう/]);
+});
+
+test("読み込みが終わるまで、各ページに「読み込んでいます…」を出す(空白のページにしない)", async ({ page }) => {
+  await mockApi(page, () => ({ events: normalReply("やあ") }), {
+    consented: true,
+    conversation: {
+      sample_oshaberi: { session_id: null, turns: [{ session_id: "77777777-7777-7777-7777-777777777777", turn_no: 1, user_input: "前の話", reply_text: "覚えてるよ", response_mode: "full" }] },
+    },
+  });
+  // これまでの会話・記憶・同意の読み込みを、合図があるまで止める
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  for (const pattern of ["**/v1/conversation**", "**/v1/memory**", "**/v1/account/consents"]) {
+    await page.route(pattern, async (route) => {
+      await gate;
+      await route.fallback();
+    });
+  }
+  await page.goto("/");
+  // 同意の確認も止まるので、サインインの前に止めるのは、会話・記憶だけにする
+  await page.unroute("**/v1/account/consents");
+  await page.getByRole("button", { name: "メールでサインイン" }).click();
+  const chat = page.getByRole("region", { name: "会話" });
+  await expect(chat.getByText("読み込んでいます…")).toBeVisible();
+  await page.getByRole("navigation", { name: "画面" }).getByRole("button", { name: "記憶" }).click();
+  await expect(page.getByRole("region", { name: "記憶" }).getByText("読み込んでいます…").first()).toBeVisible();
+
+  release();
+  await expect(page.getByRole("region", { name: "記憶" }).getByText("読み込んでいます…")).toHaveCount(0);
+  await page.getByRole("navigation", { name: "画面" }).getByRole("button", { name: "会話" }).click();
+  await expect(chat.getByText("覚えてるよ")).toBeVisible();
+  await expect(chat.getByText("読み込んでいます…")).toHaveCount(0);
+});

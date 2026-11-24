@@ -455,7 +455,7 @@ def create_app(deps: AppDeps) -> FastAPI:
 
     @app.get("/v1/conversation")
     async def conversation(character_id: str, user: AuthedUser) -> dict[str, Any]:
-        """いまの会話の続き(画面を開き直したときに表示する)。無入力で終わった会話は返さない。"""
+        """これまでの会話(直近のターン。終わった会話も含む)。画面を開いたときに、続きとして表示する。"""
         current = await engine().current_conversation(user.user_id, character_id)
         return current or {"session_id": None, "turns": []}
 
