@@ -1,8 +1,10 @@
-// ペルソナデザイナの画面(/designer。本体仕様書 §15.1 の M10。2026-11-25 のユーザーの決定)。
+// ペルソナデザイナの画面(/designer。本体仕様書 §15.1 の M10・M10-2。2026-11-25 のユーザーの決定)。
 // - 一般ユーザーのサインイン(会話の画面と同じ)。入口は当面 URL だけ。
-// - 最初に「デザイナ」(1画面。既定)か「ウィザード」(1ページずつ)を選ぶ。
+// - トップは「データの確認」: 新規作成(→ ID と名前 → 作り方の選択)か、保存データの読み込み(ファイル・サンプル → 必ずデザイナ。
+//   途中から続けるものは、途中のときと同じ作り方で開く)。
+// - 作り方は「ウィザード」(質問に答えるだけ。既定)と「デザイナ」(詳細設定)。切り替えるときは、確かめてから。
 // - 下書きはサーバーに保存しない。YAML の保存・読み込みと、タブを閉じるまでの自動の一時保存だけ。
-// - サンプルは参考(読み取り専用)。保存するときは、自分の ID に変える。
+// - サンプルは参考(読み取り専用)。読み込むときに、自分の ID と名前のコピーにする。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ErrorBoundary } from "../ErrorBoundary";
@@ -11,15 +13,22 @@ import { createAuth, signInErrorMessage } from "../auth";
 import { loadConfig } from "../config";
 import { type CheckResult, type Choices, type Definition, DesignerApi } from "./api";
 import { Compare } from "./Compare";
-import { type Draft, fileName, loadDraft, loadMode, type Mode, SAMPLE_PREFIX, saveDraft, saveMode, setIn } from "./draft";
-import { Select, TextField } from "./fields";
+import {
+  type Draft, fileName, isOwnId, loadDraft, loadWizard, type Mode, SAMPLE_PREFIX, saveDraft, saveWizard, setIn, type WizardState,
+} from "./draft";
+import { TextField } from "./fields";
+import { Modal } from "./Modal";
 import { Preview } from "./Preview";
-import { Section, SECTIONS, type SectionId, type SectionProps } from "./Sections";
+import { Section, SECTIONS, type SectionId } from "./Sections";
+import { pathCandidates, sectionForPath } from "./sectionList";
 import { Simulation } from "./Simulation";
+import { useHeightVar } from "./heightVar";
+import { Toolbar } from "./Toolbar";
 import { Types } from "./Types";
+import { WizardRunner } from "./WizardRunner";
 import "./designer.css";
 
-type Phase = "loading" | "signed-out" | "mode" | "start" | "main" | "error";
+type Phase = "loading" | "signed-out" | "home" | "common" | "mode" | "wizard" | "main" | "error";
 type Page = "edit" | "simulate" | "compare" | "types";
 const PAGES: { id: Page; label: string }[] = [
   { id: "edit", label: "編集" },
@@ -28,6 +37,20 @@ const PAGES: { id: Page; label: string }[] = [
   { id: "types", label: "タイプ一覧" },
 ];
 const CHECK_DELAY_MS = 400;
+const NEW_TYPE = "iaef"; // デザイナで新しく作るときの性格タイプ(CLI の persona new の既定と同じ)
+const ID_HINT = "英小文字で始まる 2〜41 文字(英小文字・数字・_)。sample_ で始まる ID は使えません。";
+
+/** 定義を YAML にして、端末に保存する(ダウンロード)。保存したファイル名を返す。 */
+async function downloadYaml(api: DesignerApi, definition: Definition): Promise<string> {
+  const { yaml } = await api.dumpYaml(definition);
+  const url = URL.createObjectURL(new Blob([yaml], { type: "text/yaml" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName(definition);
+  a.click();
+  URL.revokeObjectURL(url);
+  return fileName(definition);
+}
 
 export function DesignerApp() {
   const [config, configError] = useMemo((): [ReturnType<typeof loadConfig> | null, string] => {
@@ -42,10 +65,14 @@ export function DesignerApp() {
   const [phase, setPhase] = useState<Phase>(configError ? "error" : "loading");
   const [message, setMessage] = useState(configError);
   const [choices, setChoices] = useState<Choices | null>(null);
-  const [mode, setMode] = useState<Mode>(() => loadMode() ?? "designer");
   const [draft, setDraft] = useState<Draft | null>(() => loadDraft());
+  const [wizard, setWizard] = useState<WizardState | null>(() => loadWizard());
+  const [common, setCommon] = useState({ character_id: "my_character", name: "" });
   const [page, setPage] = useState<Page>("edit");
+  const [openAt, setOpenAt] = useState<string | null>(null); // デザイナで開いたときに移る先(検査の結果の場所)
   const [signingIn, setSigningIn] = useState(false);
+  const header = useRef<HTMLElement>(null);
+  useHeightVar(header, "--dz-header-h");
 
   useEffect(() => {
     document.title = "MyCompanion デザイナ";
@@ -53,7 +80,7 @@ export function DesignerApp() {
 
   const afterSignIn = useCallback(async () => {
     setChoices(await api!.choices());
-    setPhase("mode");
+    setPhase("home");
   }, [api]);
 
   useEffect(() => {
@@ -72,24 +99,50 @@ export function DesignerApp() {
     })();
   }, [auth, api, afterSignIn]);
 
-  // 下書きは、変わるたびに、タブの一時保存領域に残す(再読み込みで消えないように)
-  useEffect(() => saveDraft(draft), [draft]);
+  // 下書き・ウィザードの途中は、変わるたびに、その場でタブの一時保存領域に残す(再読み込みで消えないように)。
+  // 描画のあとの effect で残すと、入力の直後に読み込み直したとき、最後の変更が残らないことがある
+  const updateDraft = useCallback((next: Draft | null) => {
+    saveDraft(next);
+    setDraft(next);
+  }, []);
+  const updateWizard = useCallback((next: WizardState | null) => {
+    saveWizard(next);
+    setWizard(next);
+  }, []);
 
-  const chooseMode = (next: Mode) => {
-    setMode(next);
-    saveMode(next);
-    setPhase(draft ? "main" : "start");
-  };
-
-  const open = (definition: Definition, source: string) => {
-    setDraft({ definition, baseline: definition, source });
+  /** デザイナで開く(保存データの読み込み・ウィザードのあと)。ウィザードの途中は捨てる。 */
+  const openInDesigner = (definition: Definition, source: string, jumpTo?: string) => {
+    setOpenAt(jumpTo ?? null);
+    updateWizard(null);
+    updateDraft({ definition, baseline: definition, source });
     setPage("edit");
     setPhase("main");
   };
 
+  /** ウィザードを最初から(ID と名前だけを引き継ぐ)。デザイナの下書きは捨てる。 */
+  const startWizard = (character_id: string, name: string) => {
+    updateDraft(null);
+    updateWizard({ character_id, name, answers: [] });
+    setPhase("wizard");
+  };
+
+  const chooseMode = async (mode: Mode) => {
+    if (mode === "wizard") {
+      startWizard(common.character_id, common.name.trim());
+      return;
+    }
+    try {
+      const r = await api!.create({ character_id: common.character_id, name: common.name.trim(), type_id: NEW_TYPE, profile: null });
+      openInDesigner(r.definition, "新規");
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  };
+
+  const signedIn = phase !== "loading" && phase !== "signed-out" && phase !== "error";
   return (
     <div className="dz">
-      <header className="dz-header">
+      <header className="dz-header" ref={header}>
         <span className="dz-brand">MyCompanion <span className="dz-badge">デザイナ</span></span>
         {phase === "main" && (
           <nav aria-label="デザイナの画面" className="dz-pages">
@@ -100,7 +153,7 @@ export function DesignerApp() {
             ))}
           </nav>
         )}
-        {(phase === "main" || phase === "mode" || phase === "start") && auth && (
+        {signedIn && auth && (
           <button className="dz-signout" onClick={() => auth.signOut().then(() => setPhase("signed-out"))}>サインアウト</button>
         )}
       </header>
@@ -129,11 +182,35 @@ export function DesignerApp() {
               {message && <p role="alert">{message}</p>}
             </section>
           )}
-          {phase === "mode" && <ModeChoice initial={mode} onChoose={chooseMode} />}
-          {phase === "start" && api && choices && <Start api={api} choices={choices} onOpen={open} hasDraft={!!draft} onResume={() => setPhase("main")} />}
+          {phase === "home" && api && (
+            <Home api={api} draft={draft} wizard={wizard} onNew={() => setPhase("common")} onOpen={openInDesigner}
+              onResumeDraft={() => {
+                setOpenAt(null);
+                setPhase("main");
+              }} onResumeWizard={() => setPhase("wizard")} />
+          )}
+          {phase === "common" && (
+            <Common value={common} onChange={setCommon} onBack={() => setPhase("home")} onNext={() => {
+              setMessage("");
+              setPhase("mode");
+            }} />
+          )}
+          {phase === "mode" && (
+            <>
+              <ModeChoice onChoose={(m) => void chooseMode(m)} onBack={() => setPhase("common")} />
+              {message && <p role="alert" className="dz-error">{message}</p>}
+            </>
+          )}
+          {phase === "wizard" && api && choices && wizard && (
+            <>
+              {message && <p role="alert" className="dz-error">{message}</p>}
+              <WizardRunner api={api} choices={choices} state={wizard} onChange={updateWizard} onOpenDesigner={openInDesigner}
+                onRestart={() => setPhase("home")} onSave={(d) => void downloadYaml(api, d).catch((e) => setMessage((e as Error).message))} />
+            </>
+          )}
           {phase === "main" && api && choices && draft && (
-            <Workspace api={api} choices={choices} draft={draft} setDraft={setDraft} mode={mode} page={page}
-              onSwitchMode={() => chooseMode(mode === "designer" ? "wizard" : "designer")} onRestart={() => setPhase("start")} />
+            <Workspace api={api} choices={choices} draft={draft} setDraft={updateDraft} page={page} openAt={openAt}
+              onSwitchToWizard={startWizard} onRestart={() => setPhase("home")} />
           )}
         </ErrorBoundary>
       </main>
@@ -141,90 +218,127 @@ export function DesignerApp() {
   );
 }
 
-/** 使い方の選択(必ず選んでもらう。既定は「デザイナ」に焦点を置き、クリック・スペース・改行の1回で進める)。 */
-function ModeChoice({ initial, onChoose }: { initial: Mode; onChoose: (mode: Mode) => void }) {
-  const first = useRef<HTMLButtonElement>(null);
-  useEffect(() => first.current?.focus(), []);
-  return (
-    <section className="dz-center" aria-labelledby="dz-mode-title">
-      <h1 id="dz-mode-title">使い方を選んでください</h1>
-      <div className="dz-mode-choices">
-        <button ref={first} className="dz-mode-card" onClick={() => onChoose("designer")}>
-          <strong>デザイナ{initial === "designer" ? "(既定)" : ""}</strong>
-          <span>1つの画面で、すべての項目を自由に調整します。右側に、結果がすぐに出ます。</span>
-        </button>
-        <button className="dz-mode-card" onClick={() => onChoose("wizard")}>
-          <strong>ウィザード</strong>
-          <span>初めての方向け。コンセプトから順に、1ページずつ決めていきます。</span>
-        </button>
-      </div>
-      <p className="dz-hint">あとから切り替えられます。</p>
-    </section>
-  );
-}
-
-/** 始め方: 新しく作る・サンプルを開く・YAML を開く。 */
-function Start({ api, choices, onOpen, hasDraft, onResume }: {
-  api: DesignerApi; choices: Choices; onOpen: (d: Definition, source: string) => void; hasDraft: boolean; onResume: () => void;
+/** トップ(データの確認): 新規作成か、保存データの読み込み(YAML・サンプルのコピー・編集中の下書き)。 */
+function Home({ api, draft, wizard, onNew, onOpen, onResumeDraft, onResumeWizard }: {
+  api: DesignerApi; draft: Draft | null; wizard: WizardState | null; onNew: () => void;
+  onOpen: (d: Definition, source: string) => void; onResumeDraft: () => void; onResumeWizard: () => void;
 }) {
   const [samples, setSamples] = useState<{ character_id: string; name: string }[]>([]);
-  const [id, setId] = useState("my_character");
-  const [name, setName] = useState("");
-  const [typeId, setTypeId] = useState(choices.types[0]?.type_id ?? "");
-  const [profile, setProfile] = useState("");
+  const [copying, setCopying] = useState<{ character_id: string; name: string } | null>(null);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     api.samples().then((r) => setSamples(r.samples), (e) => setMessage((e as Error).message));
   }, [api]);
 
-  const idOk = /^[a-z][a-z0-9_]{1,40}$/.test(id) && !id.startsWith(SAMPLE_PREFIX);
   return (
-    <section className="dz-start" aria-labelledby="dz-start-title">
-      <h1 id="dz-start-title">はじめる</h1>
-      {hasDraft && <button onClick={onResume}>編集中の下書きに戻る</button>}
+    <section className="dz-start" aria-labelledby="dz-home-title">
+      <h1 id="dz-home-title">データの確認</h1>
       <div className="dz-start-grid">
         <fieldset className="dz-group">
-          <legend>新しく作る</legend>
-          <TextField label="キャラクタの ID(英小文字で始め、英小文字・数字・_)" value={id} maxLength={41} onChange={setId}
-            hint={idOk ? undefined : "英小文字で始まる 2〜41 文字。sample_ で始まる ID は使えません。"} />
-          <TextField label="名前" value={name} maxLength={40} onChange={setName} />
-          <Select label="性格タイプ" value={typeId} options={choices.types.map((t) => ({ value: t.type_id, label: `${t.type_id} ${t.name}(${t.composition})` }))} onChange={setTypeId} />
-          <Select label="表出プロファイル" value={profile} options={[{ value: "", label: "なし" }, ...choices.profiles.map((p) => ({ value: p.id, label: p.name }))]} onChange={setProfile} />
-          <button className="dz-primary" disabled={!idOk || !name.trim()} onClick={async () => {
-            try {
-              const r = await api.create({ character_id: id, name: name.trim(), type_id: typeId, profile: profile || null });
-              onOpen(r.definition, "新規");
-            } catch (e) {
-              setMessage((e as Error).message);
-            }
-          }}>作る</button>
+          <legend>新規作成</legend>
+          <p className="dz-hint">新しいキャラクタを作ります。ID と名前を決めたあと、作り方(質問に答える / 細かく設定する)を選びます。</p>
+          <button className="dz-primary" onClick={onNew}>新しく作る</button>
         </fieldset>
         <fieldset className="dz-group">
-          <legend>サンプルを開く(参考)</legend>
-          <p className="dz-hint">サンプルは変えられません。開いて調整したものは、自分の ID で保存します。</p>
+          <legend>保存データの読み込み</legend>
+          {(wizard || draft) && (
+            <>
+              <p className="dz-hint">途中から続ける(途中のときと同じ作り方で開きます):</p>
+              {wizard && (
+                <button onClick={onResumeWizard}>ウィザードの続きから({wizard.name}・{wizard.answers.length} 問まで回答済み)</button>
+              )}
+              {draft && <button onClick={onResumeDraft}>デザイナの下書きに戻る({String(draft.definition.name ?? "")})</button>}
+            </>
+          )}
+          <p className="dz-hint">ファイル・サンプルを開く(デザイナ(詳細設定)で開きます):</p>
+          <YamlOpen api={api} label="YAML のファイルを開く" onOpen={onOpen} onError={setMessage} />
+          <p className="dz-hint">サンプル(参考。自分の ID と名前のコピーとして開きます):</p>
           <ul className="dz-list">
             {samples.map((s) => (
               <li key={s.character_id}>
-                <button onClick={async () => {
-                  try {
-                    const r = await api.sample(s.character_id);
-                    onOpen(r.definition, `サンプル: ${s.name}`);
-                  } catch (e) {
-                    setMessage((e as Error).message);
-                  }
-                }}>{s.name}を開く</button>
+                <button onClick={() => setCopying(s)}>{s.name}をコピーして開く</button>
               </li>
             ))}
           </ul>
         </fieldset>
-        <fieldset className="dz-group">
-          <legend>YAML を開く</legend>
-          <p className="dz-hint">以前に保存したファイルや、CLI の persona.yaml を読み込みます。</p>
-          <YamlOpen api={api} onOpen={onOpen} onError={setMessage} />
-        </fieldset>
       </div>
+      {copying && (
+        <SampleCopy api={api} sample={copying} onCancel={() => setCopying(null)} onOpen={onOpen} onError={setMessage} />
+      )}
       {message && <p role="alert" className="dz-error">{message}</p>}
+    </section>
+  );
+}
+
+/** サンプルを、自分の ID と名前のコピーとして開く(サンプルそのものは変えられない)。 */
+function SampleCopy({ api, sample, onCancel, onOpen, onError }: {
+  api: DesignerApi; sample: { character_id: string; name: string }; onCancel: () => void;
+  onOpen: (d: Definition, source: string) => void; onError: (m: string) => void;
+}) {
+  const [id, setId] = useState("");
+  const [name, setName] = useState("");
+  return (
+    <Modal labelledBy="dz-copy-title" onCancel={onCancel}>
+      <h3 id="dz-copy-title">{sample.name}をコピーして開く</h3>
+      <p>サンプルは変えられないため、自分の ID と名前を付けたコピーを開きます。</p>
+      <TextField label="キャラクタの ID" value={id} maxLength={41} onChange={setId} hint={id && !isOwnId(id) ? ID_HINT : undefined} />
+      <TextField label="名前" value={name} maxLength={40} onChange={setName} />
+      <div className="dz-row">
+        <button className="dz-primary" disabled={!isOwnId(id) || !name.trim()} onClick={async () => {
+          try {
+            const r = await api.sample(sample.character_id);
+            onOpen({ ...r.definition, character_id: id, name: name.trim() }, `サンプル(${sample.name})のコピー`);
+          } catch (e) {
+            onError((e as Error).message);
+          }
+        }}>コピーして開く</button>
+        <button onClick={onCancel}>やめる</button>
+      </div>
+    </Modal>
+  );
+}
+
+/** 共通データ(ID と名前)。どちらの作り方でも、最初に決める。 */
+function Common({ value, onChange, onBack, onNext }: {
+  value: { character_id: string; name: string }; onChange: (v: { character_id: string; name: string }) => void;
+  onBack: () => void; onNext: () => void;
+}) {
+  const ok = isOwnId(value.character_id) && !!value.name.trim();
+  return (
+    <section className="dz-center" aria-labelledby="dz-common-title">
+      <h1 id="dz-common-title">ID と名前</h1>
+      <TextField label="キャラクタの ID" value={value.character_id} maxLength={41}
+        onChange={(v) => onChange({ ...value, character_id: v })} hint={isOwnId(value.character_id) ? "英小文字・数字・_。保存するファイルの名前にもなります。" : ID_HINT} />
+      <TextField label="名前" value={value.name} maxLength={40} onChange={(v) => onChange({ ...value, name: v })} />
+      <div className="dz-wizard-nav">
+        <button onClick={onBack}>戻る</button>
+        <button className="dz-primary" disabled={!ok} onClick={onNext}>次へ</button>
+      </div>
+    </section>
+  );
+}
+
+/** 作り方の選択(必ず選んでもらう。既定は「ウィザード」に焦点を置き、クリック・スペース・改行の1回で進める)。 */
+function ModeChoice({ onChoose, onBack }: { onChoose: (mode: Mode) => void; onBack: () => void }) {
+  const first = useRef<HTMLButtonElement>(null);
+  useEffect(() => first.current?.focus(), []);
+  return (
+    <section className="dz-center" aria-labelledby="dz-mode-title">
+      <h1 id="dz-mode-title">作り方を選んでください</h1>
+      <div className="dz-mode-choices">
+        <button ref={first} className="dz-mode-card" onClick={() => onChoose("wizard")}>
+          <strong>ウィザード(既定)</strong>
+          <span>いくつかの質問(35問ほど)に答えるだけで、キャラクタができあがります。初めての方向け。</span>
+        </button>
+        <button className="dz-mode-card" onClick={() => onChoose("designer")}>
+          <strong>デザイナ(詳細設定)</strong>
+          <span>性格・口数・感情の動き・好き嫌いなどを、1つ1つ自分で細かく設定します。右側に、結果がすぐに出ます。</span>
+        </button>
+      </div>
+      <div className="dz-wizard-nav">
+        <button onClick={onBack}>戻る</button>
+      </div>
     </section>
   );
 }
@@ -250,19 +364,44 @@ function YamlOpen({ api, onOpen, onError, label = "ファイルを選ぶ" }: {
   );
 }
 
-function Workspace({ api, choices, draft, setDraft, mode, page, onSwitchMode, onRestart }: {
-  api: DesignerApi; choices: Choices; draft: Draft; setDraft: (d: Draft) => void; mode: Mode; page: Page;
-  onSwitchMode: () => void; onRestart: () => void;
+function Workspace({ api, choices, draft, setDraft, page, openAt, onSwitchToWizard, onRestart }: {
+  api: DesignerApi; choices: Choices; draft: Draft; setDraft: (d: Draft) => void; page: Page; openAt: string | null;
+  onSwitchToWizard: (character_id: string, name: string) => void; onRestart: () => void;
 }) {
   const [check, setCheck] = useState<CheckResult | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState("");
-  const [section, setSection] = useState<SectionId>("basic");
-  const [step, setStep] = useState(0);
+  const [section, setSection] = useState<SectionId>(() => (openAt && sectionForPath(openAt)) || "basic");
   const [saving, setSaving] = useState<null | "ask">(null);
   const [newId, setNewId] = useState("");
+  const [toWizard, setToWizard] = useState<{ character_id: string; name: string } | null>(null);
   const [message, setMessage] = useState("");
+  const [jump, setJump] = useState<{ path: string; n: number } | null>(() => (openAt ? { path: openAt, n: 1 } : null));
+  const editor = useRef<HTMLDivElement>(null);
   const definition = draft.definition;
+
+  // 検査の結果を押したとき: 原因の設定の項目に切り替え、その欄(なければ親の欄、項目の見出し)へ移る
+  const jumpTo = (path: string) => {
+    const target = sectionForPath(path);
+    if (!target) return;
+    setSection(target);
+    setJump((j) => ({ path, n: (j?.n ?? 0) + 1 }));
+  };
+  useEffect(() => {
+    if (!jump || !editor.current) return;
+    const root = editor.current;
+    const frame = window.requestAnimationFrame(() => {
+      const element = pathCandidates(jump.path)
+        .map((p) => root.querySelector<HTMLElement>(`[data-path="${CSS.escape(p)}"]`))
+        .find((e) => e) ?? root.querySelector<HTMLElement>("h2");
+      if (!element) return;
+      element.scrollIntoView({ block: "center", behavior: "smooth" });
+      element.querySelector<HTMLElement>("input, select, textarea")?.focus({ preventScroll: true });
+      element.classList.add("dz-flash");
+      window.setTimeout(() => element.classList.remove("dz-flash"), 2000);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [jump]);
 
   // 編集のたびに、少し待ってから検査する(打っている途中で何度も呼ばない)
   useEffect(() => {
@@ -290,113 +429,82 @@ function Workspace({ api, choices, draft, setDraft, mode, page, onSwitchMode, on
   async function download(def: Definition) {
     setMessage("");
     try {
-      const { yaml } = await api.dumpYaml(def);
-      const url = URL.createObjectURL(new Blob([yaml], { type: "text/yaml" }));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName(def);
-      a.click();
-      URL.revokeObjectURL(url);
+      const name = await downloadYaml(api, def);
       setDraft({ ...draft, definition: def, baseline: def });
-      setMessage(`保存しました(${fileName(def)})。`);
+      setMessage(`保存しました(${name})。`);
     } catch (e) {
       setMessage((e as Error).message);
     }
   }
 
   const toolbar = (
-    <div className="dz-toolbar">
-      <span className="dz-source">{String(definition.name ?? "")}({String(definition.character_id ?? "")})・{draft.source}</span>
+    <Toolbar name={String(definition.name ?? "")} id={String(definition.character_id ?? "")}>
       <button className="dz-primary" onClick={() => (usesSample ? setSaving("ask") : void download(definition))}>YAML を保存</button>
       <YamlOpen api={api} label="YAML を開く" onOpen={(d, source) => setDraft({ definition: d, baseline: d, source })} onError={setMessage} />
       <button onClick={onRestart}>新しく始める</button>
-      <button onClick={onSwitchMode}>{mode === "designer" ? "ウィザードに切り替え" : "デザイナに切り替え"}</button>
-    </div>
+      <button onClick={() => setToWizard({ character_id: String(definition.character_id ?? ""), name: String(definition.name ?? "") })}>
+        ウィザードに切り替え
+      </button>
+    </Toolbar>
+  );
+
+  // デザイナ → ウィザード: ID と名前のほかは、すべて捨ててよいかを確かめる
+  const wizardAsk = toWizard && (
+    <Modal labelledBy="dz-to-wizard-title" onCancel={() => setToWizard(null)}>
+      <h3 id="dz-to-wizard-title">ウィザードに切り替えますか</h3>
+      <p className="dz-erase">IDと名前以外は、<strong>すべて消えます</strong>。</p>
+      <p>ウィザードは、質問に最初から答えて、キャラクタを組み立て直します。残したいときは、先に「YAML を保存」してください。</p>
+      <TextField label="キャラクタの ID" value={toWizard.character_id} maxLength={41} onChange={(v) => setToWizard({ ...toWizard, character_id: v })}
+        hint={isOwnId(toWizard.character_id) ? undefined : ID_HINT} />
+      <TextField label="名前" value={toWizard.name} maxLength={40} onChange={(v) => setToWizard({ ...toWizard, name: v })} />
+      <div className="dz-row">
+        <button className="dz-danger" disabled={!isOwnId(toWizard.character_id) || !toWizard.name.trim()}
+          onClick={() => onSwitchToWizard(toWizard.character_id, toWizard.name.trim())}>設定を消して、ウィザードを始める</button>
+        <button onClick={() => setToWizard(null)}>やめる(デザイナを続ける)</button>
+      </div>
+    </Modal>
   );
 
   const saveAsk = saving === "ask" && (
-    <div className="dz-dialog" role="dialog" aria-labelledby="dz-save-title">
+    <Modal labelledBy="dz-save-title" onCancel={() => setSaving(null)}>
       <h3 id="dz-save-title">自分の ID で保存</h3>
       <p>サンプルは変えられないため、自分の ID を付けて保存します。</p>
       <TextField label="新しい ID" value={newId} maxLength={41} onChange={setNewId} />
       <div className="dz-row">
-        <button className="dz-primary" disabled={!/^[a-z][a-z0-9_]{1,40}$/.test(newId) || newId.startsWith(SAMPLE_PREFIX)}
+        <button className="dz-primary" disabled={!isOwnId(newId)}
           onClick={() => {
             setSaving(null);
             void download(setIn(definition, ["character_id"], newId));
           }}>この ID で保存</button>
         <button onClick={() => setSaving(null)}>やめる</button>
       </div>
-    </div>
+    </Modal>
   );
 
-  if (page === "simulate") return <>{toolbar}{saveAsk}<Simulation api={api} definition={definition} canRun={!!check?.ok} /></>;
-  if (page === "compare") return <>{toolbar}{saveAsk}<Compare api={api} choices={choices} definition={definition} baseline={draft.baseline} current={check} /></>;
-  if (page === "types") return <>{toolbar}<Types api={api} choices={choices} /></>;
+  const dialogs = <>{wizardAsk}{saveAsk}</>;
+  if (page === "simulate") return <>{toolbar}{dialogs}<Simulation api={api} definition={definition} canRun={!!check?.ok} /></>;
+  if (page === "compare") return <>{toolbar}{dialogs}<Compare api={api} choices={choices} definition={definition} baseline={draft.baseline} current={check} /></>;
+  if (page === "types") return <>{toolbar}{dialogs}<Types api={api} choices={choices} /></>;
 
-  const sectionProps = { def: definition, edit, choices, api };
   return (
     <>
       {toolbar}
-      {saveAsk}
+      {dialogs}
       {message && <p role="status" className="dz-message">{message}</p>}
-      {mode === "designer" ? (
-        <div className="dz-layout">
-          <nav className="dz-sections" aria-label="設定の項目">
-            {SECTIONS.map((s) => (
-              <button key={s.id} className={section === s.id ? "active" : undefined} aria-current={section === s.id ? "true" : undefined} onClick={() => setSection(s.id)}>
-                <span>{s.label}</span><span className="dz-hint">{s.hint}</span>
-              </button>
-            ))}
-          </nav>
-          <div className="dz-editor">
-            <h2>{SECTIONS.find((s) => s.id === section)?.label}</h2>
-            <Section id={section} {...sectionProps} />
-          </div>
-          <Preview check={check} busy={checking} error={checkError} />
+      <div className="dz-layout">
+        <nav className="dz-sections" aria-label="設定の項目">
+          {SECTIONS.map((s) => (
+            <button key={s.id} className={section === s.id ? "active" : undefined} aria-current={section === s.id ? "true" : undefined} onClick={() => setSection(s.id)}>
+              <span>{s.label}</span><span className="dz-hint">{s.hint}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="dz-editor" ref={editor}>
+          <h2 tabIndex={-1}>{SECTIONS.find((s) => s.id === section)?.label}</h2>
+          <Section id={section} def={definition} edit={edit} choices={choices} api={api} />
         </div>
-      ) : (
-        <Wizard step={step} setStep={setStep} sectionProps={sectionProps} check={check} checking={checking} checkError={checkError}
-          onSave={() => (usesSample ? setSaving("ask") : void download(definition))} api={api} definition={definition} />
-      )}
-    </>
-  );
-}
-
-const WIZARD_STEPS: SectionId[] = ["basic", "type", "expression", "temperament", "likes", "events", "persona"];
-
-function Wizard({ step, setStep, sectionProps, check, checking, checkError, onSave, api, definition }: {
-  step: number; setStep: (n: number) => void; sectionProps: SectionProps;
-  check: CheckResult | null; checking: boolean; checkError: string; onSave: () => void; api: DesignerApi; definition: Definition;
-}) {
-  const total = WIZARD_STEPS.length + 1; // 最後は「確認」
-  const isLast = step >= WIZARD_STEPS.length;
-  const id = WIZARD_STEPS[Math.min(step, WIZARD_STEPS.length - 1)];
-  const label = isLast ? "確認" : SECTIONS.find((s) => s.id === id)?.label;
-  return (
-    <div className="dz-wizard">
-      <ol className="dz-steps" aria-label="手順">
-        {[...WIZARD_STEPS.map((s) => SECTIONS.find((x) => x.id === s)?.label ?? s), "確認"].map((name, i) => (
-          <li key={name} className={i === step ? "active" : i < step ? "done" : undefined} aria-current={i === step ? "step" : undefined}>
-            <button onClick={() => setStep(i)}>{i + 1}. {name}</button>
-          </li>
-        ))}
-      </ol>
-      <h2>{step + 1} / {total}: {label}</h2>
-      {isLast ? (
-        <div className="dz-review">
-          <p>検査の結果を確かめ、模擬のシミュレーションで動きを見てから、YAML を保存してください。</p>
-          <Simulation api={api} definition={definition} canRun={!!check?.ok} />
-          <button className="dz-primary" onClick={onSave}>YAML を保存</button>
-        </div>
-      ) : (
-        <Section id={id} {...sectionProps} />
-      )}
-      <div className="dz-wizard-nav">
-        <button disabled={step === 0} onClick={() => setStep(step - 1)}>戻る</button>
-        <button className="dz-primary" disabled={isLast} onClick={() => setStep(step + 1)}>次へ</button>
+        <Preview check={check} busy={checking} error={checkError} onJump={jumpTo} />
       </div>
-      <Preview check={check} busy={checking} error={checkError} />
-    </div>
+    </>
   );
 }

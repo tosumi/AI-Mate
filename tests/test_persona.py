@@ -314,6 +314,23 @@ def test_lint_w01_introvert_but_talkative():
     assert {"W01", "W14"} <= _codes(raw)
 
 
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        ("profile.deltas.talkativeness", 0.5),  # W01・W14
+        ("profile.deltas.relationship_sensitivity", 0.45),  # W20・W21
+        ("profile.deltas.expressiveness", 0.6),
+        ("persona_prompt", ""),  # E06
+        ("event_rules", [{"id": "x", "trigger": {"kind": "act", "name": "nope"}, "effects": {"joy": 0.5}, "gain": 0.3}]),  # E12
+    ],
+)
+def test_lint_warnings_and_errors_point_to_the_cause(path, value):
+    """デザイナの画面で、結果を押すと原因の設定へ移るため、警告とエラーは場所を持つ(M10-2 の手順3)。"""
+    findings = [f for f in lint(_with(path, value)).findings if f.level != "info"]
+    assert findings
+    assert all(f.path for f in findings), [f.code for f in findings if not f.path]
+
+
 def test_lint_w24_preference_contradicts_rule():
     raw = _raw()
     raw["appraisal_rules"].append({"topic": "ねこ", "effects": {"fear": 1.0}, "gain": 0.6})

@@ -258,7 +258,7 @@ def lint(raw: dict[str, Any], existing_ids: set[str] | None = None, modulation_m
     traits = resolve(d)
     temperament = d.temperament
     if traits.introversion > 0.7 and traits.talkativeness > 0.7:
-        add(Finding("W01", "内向的なのにおしゃべりです。矛盾していないか確認してください"))
+        add(Finding("W01", "内向的なのにおしゃべりです。矛盾していないか確認してください", "profile.deltas.talkativeness"))
     if d.initial_relationship >= 11:
         add(Finding("W04", "恋慕帯から始まります。コンテンツ方針の確認が必要です(方針が決まるまで公開できません)", "initial_relationship"))
     if d.initial_relationship <= -11:
@@ -275,7 +275,7 @@ def lint(raw: dict[str, Any], existing_ids: set[str] | None = None, modulation_m
     if any(abs(v) > 0.7 for v in temperament.baseline_vad.model_dump().values()):
         add(Finding("W09", "baseline_vad の絶対値が0.7を超えています。常に同じ気分になります", "temperament.baseline_vad"))
     if traits.expressiveness > 0.7 and traits.talkativeness < 0.2:
-        add(Finding("W10", "感情は豊かだが話さない設定です。意図したものか確認してください"))
+        add(Finding("W10", "感情は豊かだが話さない設定です。意図したものか確認してください", "profile.deltas.expressiveness"))
 
     by_topic: dict[str, dict[str, float]] = {}
     for rule in d.appraisal_rules:
@@ -309,7 +309,7 @@ def lint(raw: dict[str, Any], existing_ids: set[str] | None = None, modulation_m
 
     sensitivity = traits.relationship_sensitivity
     if sensitivity >= 0.9 or sensitivity <= 0.1:
-        add(Finding("W20", f"relationship_sensitivity が極端です({sensitivity:.2f})"))
+        add(Finding("W20", f"relationship_sensitivity が極端です({sensitivity:.2f})", "profile.deltas.relationship_sensitivity"))
     low = effective_traits(traits, -20, modulation_max)
     high = effective_traits(traits, 20, modulation_max)
     stuck = [
@@ -318,7 +318,7 @@ def lint(raw: dict[str, Any], existing_ids: set[str] | None = None, modulation_m
         if getattr(low, name) in (0.0, 1.0) or getattr(high, name) in (0.0, 1.0)
     ]
     if stuck and sensitivity > 0:
-        add(Finding("W21", f"関係値のカーブが頭打ちになります: {', '.join(stuck)}"))
+        add(Finding("W21", f"関係値のカーブが頭打ちになります: {', '.join(stuck)}", "profile.deltas.relationship_sensitivity"))
 
     preferences = merged_preferences(d)
     if not preferences:
@@ -411,7 +411,7 @@ def lint(raw: dict[str, Any], existing_ids: set[str] | None = None, modulation_m
     # --- 情報 ---
     if traits.initiative >= 0.5:
         note = "0.8を超えています。話題を振りすぎないか、シミュレーション(S14)で確認してください" if traits.initiative > 0.8 else ""
-        add(Finding("I01", f"initiative が {traits.initiative:.2f} です。会話が途切れそうなときに、この確率で話題を振ります。{note}".strip()))
+        add(Finding("I01", f"initiative が {traits.initiative:.2f} です。会話が途切れそうなときに、この確率で話題を振ります。{note}".strip(), "profile.deltas.initiative"))
     preset = d.profile.preset
     if preset in PROFILE_PRESETS:
         differences = [

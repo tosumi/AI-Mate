@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from mycompanion.api.users import AuthedUser
-from mycompanion.persona import designer
+from mycompanion.persona import designer, wizard
 from mycompanion.persona.designer import DesignerError
 from mycompanion.ratelimit import SlidingWindowLimiter
 
@@ -78,6 +78,16 @@ class QuizBody(BaseModel):
 
     answers: dict[str, int]
     tiebreak_choice: dict[str, str] = {}
+
+
+class WizardBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    character_id: str = Field(pattern=r"^[a-z][a-z0-9_]{1,40}$")
+    name: str = Field(min_length=1, max_length=40)
+    # 質問 ID → 回答(5段階の数、選択肢の値、好き嫌いの区分 → 項目 ID)
+    answers: dict[str, int | str | dict[str, str | None]] = Field(default={}, max_length=80)
+    finish: bool = False  # 残りの質問を、既定の回答にして組み立てる(デザイナに切り替えるとき)
 
 
 class SimulateBody(BaseModel):
@@ -156,6 +166,19 @@ def create_designer_router(samples_root: Path | None = None) -> APIRouter:
             return designer.quiz_score(body.answers, body.tiebreak_choice)
         except DesignerError as exc:
             raise _fail(exc) from None
+
+    @router.post("/wizard")
+    async def wizard_step(body: WizardBody, _: AuthedUser) -> dict[str, Any]:
+        """ウィザード: 次の質問か、すべて答えた(または finish)ときは組み立てた定義と検査の結果(状態を持たない)。"""
+        if body.character_id.startswith(designer.SAMPLE_PREFIX):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "sample_ で始まる ID は使えません。")
+        try:
+            out = wizard.step(body.character_id, body.name.strip(), body.answers, body.finish)
+        except wizard.WizardError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
+        if out["done"]:
+            out["check"] = designer.check(out["definition"], root=state.samples_root)
+        return out
 
     @router.post("/simulate")
     async def simulate(body: SimulateBody, user: AuthedUser) -> dict[str, Any]:

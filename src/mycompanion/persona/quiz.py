@@ -8,8 +8,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
-from mycompanion.persona.types import AXES, AXIS_POLES
+from mycompanion.persona.types import AXES, AXIS_POLES, preset_axes
 
 BANK_VERSION = 1
 SCALE_LABELS = (
@@ -192,6 +193,31 @@ def axes_from_scores(result: QuizResult) -> dict[str, float]:
             value = 0.49
         axes[axis] = round(value, 2)
     return axes
+
+
+def base_personality(
+    result: QuizResult, answers: dict[str, int], tiebreak_choice: dict[str, str], adopt: str, completed_at: str | None = None
+) -> dict[str, Any]:
+    """診断の結果を、定義の `base_personality` の形にする(CLI・デザイナ・ウィザードで共通)。"""
+    if result.type_id is None:
+        raise ValueError(f"タイプが決まっていません(未決定の軸: {', '.join(result.undecided_axes)})")
+    record: dict[str, Any] = {
+        "bank_version": BANK_VERSION,
+        "answers": answers,
+        "scores": {a: r.score for a, r in result.axes.items()},
+        "strength": {a: r.strength for a, r in result.axes.items()},
+        "borderline": [a for a, r in result.axes.items() if r.used_tiebreak or r.borderline],
+        "tiebreak_choice": tiebreak_choice,
+        "adopt": adopt,
+    }
+    if completed_at is not None:
+        record["completed_at"] = completed_at
+    return {
+        "type": result.type_id,
+        "axes": axes_from_scores(result) if adopt == "scores" else preset_axes(result.type_id),
+        "source": "quiz",
+        "quiz": record,
+    }
 
 
 def answers_for_type(type_id: str, include_tiebreak: bool = False) -> dict[str, int]:

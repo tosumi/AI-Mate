@@ -3,8 +3,12 @@
 
 import type { CheckResult, Resolved } from "./api";
 import { ASSOCIATION_LABELS, LENGTH_LABELS, signed, TRAIT_KEYS, TRAIT_LABELS } from "./labels";
+import { sectionForPath } from "./sectionList";
 
-export function Preview({ check, busy, error }: { check: CheckResult | null; busy: boolean; error: string }) {
+/** onJump があれば、場所のある検査の結果を押すと、原因の設定の項目へ移る(デザイナ)。 */
+export function Preview({ check, busy, error, onJump }: {
+  check: CheckResult | null; busy: boolean; error: string; onJump?: (path: string) => void;
+}) {
   const resolved = check?.resolved ?? null;
   const errors = check?.findings.filter((f) => f.level === "error") ?? [];
   const warnings = check?.findings.filter((f) => f.level === "warning") ?? [];
@@ -25,8 +29,17 @@ export function Preview({ check, busy, error }: { check: CheckResult | null; bus
               <ul className="dz-findings">
                 {[...errors, ...warnings, ...infos].map((f, i) => (
                   <li key={i} className={`dz-finding ${f.level}`}>
-                    <span className="dz-code">{f.code}</span> {f.message}
-                    {f.path && <span className="dz-path"> ({f.path})</span>}
+                    {onJump && f.path && sectionForPath(f.path) ? (
+                      <button className="dz-jump" onClick={() => onJump(f.path)} title="原因の設定へ移る">
+                        <span className="dz-code">{f.code}</span> {f.message}
+                        <span className="dz-path"> ({f.path})</span>
+                      </button>
+                    ) : (
+                      <>
+                        <span className="dz-code">{f.code}</span> {f.message}
+                        {f.path && <span className="dz-path"> ({f.path})</span>}
+                      </>
+                    )}
                   </li>
                 ))}
               </ul>

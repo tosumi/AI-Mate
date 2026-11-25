@@ -433,22 +433,8 @@ def _run_quiz(
             return
         adopt = "scores" if reply == "2" else "preset"
     adopt = adopt or "preset"
-    axes = quiz.axes_from_scores(result) if adopt == "scores" else ptypes.preset_axes(result.type_id)
-    raw["base_personality"] = {
-        "type": result.type_id,
-        "axes": axes,
-        "source": "quiz",
-        "quiz": {
-            "bank_version": quiz.BANK_VERSION,
-            "answers": answers,
-            "scores": {a: r.score for a, r in result.axes.items()},
-            "strength": {a: r.strength for a, r in result.axes.items()},
-            "borderline": [a for a, r in result.axes.items() if r.used_tiebreak or r.borderline],
-            "tiebreak_choice": tiebreak_choice,
-            "adopt": adopt,
-            "completed_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
-        },
-    }
+    completed_at = datetime.now(UTC).replace(microsecond=0).isoformat()
+    raw["base_personality"] = quiz.base_personality(result, answers, tiebreak_choice, adopt, completed_at)
     pio.save_raw(path, raw)
     session_path.unlink(missing_ok=True)
     print(f"性格タイプを設定しました({adopt}): {path}")

@@ -1,10 +1,10 @@
 // 下書き(編集中の定義)の操作と、タブの一時保存領域への自動の保存(本体仕様書 §15.1 の M10)。
 // 下書きはサーバーに保存しない。タブを閉じると消える(残すときは「YAML を保存」で端末に保存する)。
 
-import type { Definition } from "./api";
+import type { Definition, WizardAnswer } from "./api";
 
 const DRAFT_KEY = "mycompanion.designer.draft";
-const MODE_KEY = "mycompanion.designer.mode";
+const WIZARD_KEY = "mycompanion.designer.wizard";
 
 export type Draft = {
   definition: Definition;
@@ -14,41 +14,48 @@ export type Draft = {
 
 export type Mode = "designer" | "wizard";
 
-export function loadDraft(): Draft | null {
+/** ウィザードの途中(答えた順の回答)。再読み込みしても続きから答えられるように、タブの一時保存領域に残す。 */
+export type WizardState = { character_id: string; name: string; answers: [string, WizardAnswer][] };
+
+function load<T>(key: string, ok: (value: T) => boolean): T | null {
   try {
-    const text = sessionStorage.getItem(DRAFT_KEY);
+    const text = sessionStorage.getItem(key);
     if (!text) return null;
-    const draft = JSON.parse(text) as Draft;
-    return draft && typeof draft.definition === "object" ? draft : null;
+    const value = JSON.parse(text) as T;
+    return value && ok(value) ? value : null;
   } catch {
     return null;
   }
 }
 
-export function saveDraft(draft: Draft | null): void {
+function save(key: string, value: unknown): void {
   try {
-    if (draft) sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-    else sessionStorage.removeItem(DRAFT_KEY);
+    if (value) sessionStorage.setItem(key, JSON.stringify(value));
+    else sessionStorage.removeItem(key);
   } catch {
     // 保存できない(容量・プライベートモード)ときは、残さないだけ
   }
 }
 
-export function loadMode(): Mode | null {
-  try {
-    const value = sessionStorage.getItem(MODE_KEY);
-    return value === "designer" || value === "wizard" ? value : null;
-  } catch {
-    return null;
-  }
+export function loadDraft(): Draft | null {
+  return load<Draft>(DRAFT_KEY, (d) => typeof d.definition === "object");
 }
 
-export function saveMode(mode: Mode): void {
-  try {
-    sessionStorage.setItem(MODE_KEY, mode);
-  } catch {
-    // 残さないだけ
-  }
+export function saveDraft(draft: Draft | null): void {
+  save(DRAFT_KEY, draft);
+}
+
+export function loadWizard(): WizardState | null {
+  return load<WizardState>(WIZARD_KEY, (w) => typeof w.character_id === "string" && Array.isArray(w.answers));
+}
+
+export function saveWizard(state: WizardState | null): void {
+  save(WIZARD_KEY, state);
+}
+
+/** 自分のキャラクタの ID として使えるか(英小文字で始まる 2〜41 文字。サンプルの ID は使えない)。 */
+export function isOwnId(id: string): boolean {
+  return /^[a-z][a-z0-9_]{1,40}$/.test(id) && !id.startsWith(SAMPLE_PREFIX);
 }
 
 /** path の値を読む(途中がなければ undefined)。 */

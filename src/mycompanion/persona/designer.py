@@ -255,19 +255,8 @@ def quiz_score(answers: dict[str, int], tiebreak_choice: dict[str, str]) -> dict
     if result.type_id:
         # CLI の `type quiz` と同じ形で、定義に入れる値(採用方法ごと)
         out["base_personality"] = {
-            adopt: {
-                "type": result.type_id, "axes": out["preset_axes"] if adopt == "preset" else out["score_axes"],
-                "source": "quiz",
-                "quiz": {
-                    "bank_version": quiz.BANK_VERSION, "answers": answers,
-                    "scores": {a: r.score for a, r in result.axes.items()},
-                    "strength": {a: r.strength for a, r in result.axes.items()},
-                    "borderline": [a for a, r in result.axes.items() if r.used_tiebreak or r.borderline],
-                    "tiebreak_choice": tiebreak_choice, "adopt": adopt,
-                },
-            }
-            for adopt in ("preset", "scores")
-        }  # fmt: skip
+            adopt: quiz.base_personality(result, answers, tiebreak_choice, adopt) for adopt in ("preset", "scores")
+        }
     return out
 
 

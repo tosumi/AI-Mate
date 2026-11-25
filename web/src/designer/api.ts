@@ -46,6 +46,17 @@ export type SweepRow = {
   violations: string[]; failures: string[]; in_range: boolean;
 };
 
+export type WizardAnswer = number | string | Record<string, string | null>;
+export type WizardQuestion = {
+  id: string; section: string; section_label: string; kind: "scale" | "choice" | "likes" | "dislikes"; text: string;
+  options: { value: string; label: string }[]; default: WizardAnswer; note: string;
+};
+export type WizardStep = {
+  version: number; sections: { id: string; label: string }[]; progress: { answered: number; total: number };
+  question: WizardQuestion | null; done: boolean;
+  definition?: Definition; acknowledged?: string[]; defaulted?: number; check?: CheckResult;
+};
+
 export class DesignerApi {
   private readonly baseUrl: string;
   private readonly token: TokenSource;
@@ -110,6 +121,11 @@ export class DesignerApi {
 
   scoreQuiz(answers: Record<string, number>, tiebreakChoice: Record<string, string>): Promise<QuizResult> {
     return this.request("POST", "/quiz/score", { answers, tiebreak_choice: tiebreakChoice });
+  }
+
+  /** ウィザード: 次の質問か、組み立てた定義(finish = 残りを既定の回答にする)。状態は持たない。 */
+  wizard(body: { character_id: string; name: string; answers: Record<string, WizardAnswer>; finish?: boolean }): Promise<WizardStep> {
+    return this.request("POST", "/wizard", body);
   }
 
   simulate(definition: Definition, relationships: (number | null)[], under18: boolean): Promise<SimulationResult> {
