@@ -12,11 +12,13 @@ from mycompanion.db.migrate import checksum, list_migrations
 CHARACTER_SCOPE_EXEMPT = {
     "characters",  # キャラクタ定義(全ユーザー共通、読み取りのみ)
     "character_reviews",  # 公開前のレビューの記録(設計用。アプリのロールには読ませない)
+    "persona_submissions",  # 0022: 運営者の提出(設計用。関数からだけ読み書きする)
 }
 # ユーザーのデータを持たず、個別の方針で保護しているテーブル
 REFERENCE_TABLES = {
     "characters", "audit_logs", "personality_types", "quiz_bank", "character_reviews",
     "rating_snapshots",  # 0017: 人間評価の集計の保存(件数と平均だけ。関数からだけ読み書きする)
+    "persona_submissions",  # 0022: 運営者のキャラクタの提出(関数からだけ読み書きする。ユーザーのデータなし)
 }  # fmt: skip
 
 SCOPED_MARKER = "-- (user_id, character_id) で分離するテーブル"

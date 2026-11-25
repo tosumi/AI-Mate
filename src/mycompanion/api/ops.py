@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
@@ -21,9 +21,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from mycompanion.api.auth import AuthError, OperatorPrincipal
 from mycompanion.ops import views
 from mycompanion.ops.audit import ALLOWED, DENIED, UNAUTHENTICATED, OperatorAuditEntry
+from mycompanion.ops.personas import NOTES_MAX, PersonaError, PersonaPublisher, inspect, scenario_list
 from mycompanion.ops.roles import Permission, known_roles, permissions_for
 from mycompanion.ops.store import OperatorStore
 from mycompanion.ops.views import OPS_MEMO_MAX, REPORT_STATUSES
+from mycompanion.persona import designer
+from mycompanion.persona.designer import DesignerError
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +121,100 @@ def _store(request: Request) -> OperatorStore:
     if store is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "運営者の機能は使えません")
     return store
+
+
+
+class DefinitionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    definition: dict[str, Any]
+
+
+class YamlBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(max_length=designer.YAML_MAX_CHARS)
+
+
+class DecisionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    notes: Annotated[str | None, Field(max_length=NOTES_MAX)] = None
+
+
+class RollbackBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    to: str = Field(pattern=r"^\d+\.\d+\.\d+$")
+
+
+class PreviewChatBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    definition: dict[str, Any]
+    session_id: str | None = None
+    text: str = Field(min_length=1, max_length=1000)
+
+
+class PreviewSimulateBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    definition: dict[str, Any]
+    scenarios: list[str] = Field(min_length=1, max_length=3)
+
+
+_PERSONA_ERROR_STATUS = {
+    "invalid": status.HTTP_422_UNPROCESSABLE_CONTENT,
+    "not_found": status.HTTP_404_NOT_FOUND,
+    "forbidden": status.HTTP_403_FORBIDDEN,
+    "conflict": status.HTTP_409_CONFLICT,
+    "limited": status.HTTP_429_TOO_MANY_REQUESTS,
+}
+
+
+def _persona_error(exc: PersonaError) -> HTTPException:
+    return HTTPException(_PERSONA_ERROR_STATUS.get(exc.kind, status.HTTP_400_BAD_REQUEST), exc.message)
+
+
+def _publisher(request: Request) -> PersonaPublisher:
+    publisher = request.app.state.deps.ops_personas
+    if publisher is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "運営者の機能は使えません")
+    return publisher
+
+
+async def _record(request: Request, operator: Operator, action: str, details: dict[str, Any]) -> None:
+    """操作の内容を、操作の前に監査ログに残す(定義の本文は入れない)。"""
+    await _audit(
+        request,
+        OperatorAuditEntry(
+            ts=datetime.now(UTC), actor_id=operator.principal.object_id, action=action, decision=ALLOWED,
+            roles=tuple(r.value for r in known_roles(operator.principal.roles)), details=details,
+        ),
+    )  # fmt: skip
+
+
+
+async def _persona_operation(
+    request: Request, operator: Operator, action: str, details: dict[str, Any], run: Callable[[], Awaitable[Any]]
+) -> Any:
+    """キャラクタの操作: 要求を操作の前に記録し(記録できなければ操作しない)、結果(済み・断った理由)も記録する。"""
+    await _record(request, operator, action, {**details, "outcome": "requested"})
+    try:
+        result = await run()
+    except PersonaError as exc:
+        await _record_result(request, operator, action, {**details, "outcome": f"refused:{exc.kind}"})
+        raise _persona_error(exc) from None
+    await _record_result(request, operator, action, {**details, "outcome": "done"})
+    return result
+
+
+async def _record_result(request: Request, operator: Operator, action: str, details: dict[str, Any]) -> None:
+    # 結果の記録は、操作のあと。失敗しても、済んだ操作の応答は返す(要求の記録は、操作の前に残っている)
+    try:
+        await _record(request, operator, action, details)
+    except HTTPException:
+        logger.warning("運営者の操作の結果を、監査ログに記録できませんでした: %s", action)
 
 
 def create_ops_router() -> APIRouter:
@@ -234,4 +331,155 @@ def create_ops_router() -> APIRouter:
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "運営者の機能は使えません")
         return await metrics.read(period)
 
+    # --- キャラクタの設計・公開(設計者・承認者・管理者。§15.1 の M10) -----------------------------
+
+    @router.get("/personas")
+    async def personas(request: Request, _: Annotated[Operator, Depends(require(Permission.VIEW_PERSONAS))]) -> dict[str, Any]:
+        """キャラクタごとの版の一覧と、承認待ちの提出。"""
+        publisher = _publisher(request)
+        pending = await request.app.state.deps.ops_personas_store.list_submissions("pending", 100)
+        return {"characters": await publisher.versions(), "pending": [_plain(r) for r in pending]}
+
+    @router.get("/personas/submissions")
+    async def submissions(
+        request: Request, _: Annotated[Operator, Depends(require(Permission.VIEW_PERSONAS))],
+        submission_status: Annotated[str | None, Query(alias="status", pattern="^(pending|approved|rejected)$")] = None,
+    ) -> dict[str, Any]:
+        _publisher(request)
+        rows = await request.app.state.deps.ops_personas_store.list_submissions(submission_status, 100)
+        return {"submissions": [_plain(r) for r in rows]}
+
+    @router.get("/personas/submissions/{submission_id}")
+    async def submission(
+        request: Request, submission_id: uuid.UUID, _: Annotated[Operator, Depends(require(Permission.VIEW_PERSONAS))]
+    ) -> dict[str, Any]:
+        try:
+            return await _publisher(request).detail(submission_id)
+        except PersonaError as exc:
+            raise _persona_error(exc) from None
+
+    @router.post("/personas/yaml")
+    async def persona_yaml(body: YamlBody, _: Annotated[Operator, Depends(require(Permission.VIEW_PERSONAS))]) -> dict[str, Any]:
+        """YAML を読む(運営者の画面の「YAML を開く」)。"""
+        try:
+            return {"definition": designer.parse_yaml(body.text)}
+        except DesignerError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
+
+    @router.post("/personas/inspect")
+    async def persona_inspect(
+        request: Request, body: DefinitionBody, _: Annotated[Operator, Depends(require(Permission.VIEW_PERSONAS))]
+    ) -> dict[str, Any]:
+        """提出の前の検査(lint と、標準シナリオ・専用シナリオの模擬)。"""
+        _publisher(request)
+        return await inspect(body.definition, request.app.state.deps.personas_root)
+
+    @router.post("/personas/submissions")
+    async def submit_persona(
+        request: Request, body: DefinitionBody, operator: Annotated[Operator, Depends(require(Permission.SUBMIT_PERSONAS))]
+    ) -> dict[str, Any]:
+        publisher = _publisher(request)
+        details = {
+            "character_id": str(body.definition.get("character_id", ""))[:64],
+            "version_label": str(body.definition.get("version", ""))[:20],
+        }
+        return await _persona_operation(
+            request, operator, "persona_submit", details,
+            lambda: publisher.submit(body.definition, operator.principal.object_id, datetime.now(UTC)),
+        )  # fmt: skip
+
+    @router.post("/personas/submissions/{submission_id}/approve")
+    async def approve_persona(
+        request: Request, submission_id: uuid.UUID, body: DecisionBody,
+        operator: Annotated[Operator, Depends(require(Permission.PUBLISH_PERSONAS))],
+    ) -> dict[str, Any]:
+        publisher = _publisher(request)
+        return await _persona_operation(
+            request, operator, "persona_approve", {"submission_id": str(submission_id)},
+            lambda: publisher.approve(submission_id, operator.principal.object_id, body.notes, datetime.now(UTC)),
+        )  # fmt: skip
+
+    @router.post("/personas/submissions/{submission_id}/reject")
+    async def reject_persona(
+        request: Request, submission_id: uuid.UUID, body: DecisionBody,
+        operator: Annotated[Operator, Depends(require(Permission.PUBLISH_PERSONAS))],
+    ) -> dict[str, Any]:
+        publisher = _publisher(request)
+        await _persona_operation(
+            request, operator, "persona_reject", {"submission_id": str(submission_id)},
+            lambda: publisher.reject(submission_id, operator.principal.object_id, body.notes, datetime.now(UTC)),
+        )  # fmt: skip
+        return {"rejected": True}
+
+    @router.get("/personas/scenarios")
+    async def persona_scenarios(
+        request: Request, _: Annotated[Operator, Depends(require(Permission.PREVIEW_PERSONAS))], character_id: str | None = None
+    ) -> dict[str, Any]:
+        return {"scenarios": scenario_list(character_id, request.app.state.deps.personas_root)}
+
+    @router.post("/personas/preview/chat")
+    async def preview_chat(
+        request: Request, body: PreviewChatBody, operator: Annotated[Operator, Depends(require(Permission.PREVIEW_PERSONAS))]
+    ) -> dict[str, Any]:
+        """実際のモデルで話してみる(状態はメモリ上だけ。DB・会話の記録には書かない)。"""
+        preview = request.app.state.deps.ops_preview
+        if preview is None:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "運営者の機能は使えません")
+        try:
+            return await preview.chat(body.definition, operator.principal.object_id, body.session_id, body.text)
+        except PersonaError as exc:
+            raise _persona_error(exc) from None
+
+    @router.post("/personas/preview/simulate")
+    async def preview_simulate(
+        request: Request, body: PreviewSimulateBody, operator: Annotated[Operator, Depends(require(Permission.PREVIEW_PERSONAS))]
+    ) -> dict[str, Any]:
+        """実際のモデルでのシミュレーション(選んだシナリオだけ。1〜3件)。"""
+        preview = request.app.state.deps.ops_preview
+        if preview is None:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "運営者の機能は使えません")
+        try:
+            return await preview.simulate(
+                body.definition, operator.principal.object_id, body.scenarios, request.app.state.deps.personas_root
+            )
+        except PersonaError as exc:
+            raise _persona_error(exc) from None
+
+    @router.get("/personas/{character_id}/diff")
+    async def persona_diff(
+        request: Request, character_id: str, first: int, second: int,
+        _: Annotated[Operator, Depends(require(Permission.VIEW_PERSONAS))],
+    ) -> dict[str, Any]:
+        try:
+            return {"changes": await _publisher(request).diff(character_id, first, second)}
+        except PersonaError as exc:
+            raise _persona_error(exc) from None
+
+    @router.post("/personas/{character_id}/rollback")
+    async def rollback_persona(
+        request: Request, character_id: str, body: RollbackBody,
+        operator: Annotated[Operator, Depends(require(Permission.PUBLISH_PERSONAS))],
+    ) -> dict[str, Any]:
+        publisher = _publisher(request)
+        version = await _persona_operation(
+            request, operator, "persona_rollback", {"character_id": character_id[:64], "version_label": body.to},
+            lambda: publisher.rollback(character_id, body.to, operator.principal.object_id, datetime.now(UTC)),
+        )  # fmt: skip
+        return {"published_version": version}
+
+    @router.post("/personas/{character_id}/deprecate")
+    async def deprecate_persona(
+        request: Request, character_id: str, operator: Annotated[Operator, Depends(require(Permission.PUBLISH_PERSONAS))]
+    ) -> dict[str, Any]:
+        publisher = _publisher(request)
+        count = await _persona_operation(
+            request, operator, "persona_deprecate", {"character_id": character_id[:64]},
+            lambda: publisher.deprecate(character_id, operator.principal.object_id, datetime.now(UTC)),
+        )  # fmt: skip
+        return {"deprecated": count}
+
     return router
+
+
+def _plain(row: dict[str, Any]) -> dict[str, Any]:
+    return {k: (v.isoformat() if isinstance(v, datetime) else str(v) if isinstance(v, uuid.UUID) else v) for k, v in row.items()}

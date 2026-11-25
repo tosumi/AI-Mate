@@ -24,12 +24,27 @@ class Permission(StrEnum):
     VIEW_RATINGS = "view_ratings"  # 評価の集計
     VIEW_AUDIT = "view_audit"  # 監査ログの閲覧
     VIEW_SYSTEM = "view_system"  # システムの状況(Azure のメトリックのダッシュボード)
+    # キャラクタの設計・公開(§15.1 の M10)。提出と公開を、別の許可に分ける(設計者と承認者の分離)
+    VIEW_PERSONAS = "view_personas"  # 版の一覧・差分、提出の一覧・詳細
+    SUBMIT_PERSONAS = "submit_personas"  # 定義の提出
+    PUBLISH_PERSONAS = "publish_personas"  # 承認・公開、差し戻し、ロールバック、非推奨
+    PREVIEW_PERSONAS = "preview_personas"  # 実際のモデルでの試し(チャットのプレビュー、シミュレーション)
 
 
 # ロール → 許可(仕様書の表と同じ。変えるときは、仕様書とテストも変える)
 GRANTS: dict[Role, frozenset[Permission]] = {
-    Role.DESIGNER: frozenset({Permission.VIEW_SELF, Permission.VIEW_RATINGS}),
-    Role.APPROVER: frozenset({Permission.VIEW_SELF, Permission.VIEW_RATINGS}),
+    Role.DESIGNER: frozenset(
+        {
+            Permission.VIEW_SELF, Permission.VIEW_RATINGS, Permission.VIEW_PERSONAS, Permission.SUBMIT_PERSONAS,
+            Permission.PREVIEW_PERSONAS,
+        }
+    ),
+    Role.APPROVER: frozenset(
+        {
+            Permission.VIEW_SELF, Permission.VIEW_RATINGS, Permission.VIEW_PERSONAS, Permission.PUBLISH_PERSONAS,
+            Permission.PREVIEW_PERSONAS,
+        }
+    ),
     Role.SUPPORT: frozenset(
         {Permission.VIEW_SELF, Permission.VIEW_REPORTS, Permission.HANDLE_REPORTS, Permission.VIEW_RATINGS}
     ),
@@ -41,6 +56,10 @@ GRANTS: dict[Role, frozenset[Permission]] = {
             Permission.VIEW_RATINGS,
             Permission.VIEW_AUDIT,
             Permission.VIEW_SYSTEM,
+            Permission.VIEW_PERSONAS,
+            Permission.SUBMIT_PERSONAS,
+            Permission.PUBLISH_PERSONAS,
+            Permission.PREVIEW_PERSONAS,
         }
     ),
     Role.AUDITOR: frozenset({Permission.VIEW_SELF, Permission.VIEW_AUDIT}),

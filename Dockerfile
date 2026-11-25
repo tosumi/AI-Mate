@@ -7,6 +7,8 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY src ./src
+# デザイナのサンプル(読み取り専用の参考。§15.1 の M10)
+COPY personas ./personas
 RUN uv sync --frozen --no-dev
 
 FROM python:3.13-slim

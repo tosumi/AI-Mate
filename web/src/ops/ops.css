@@ -50,6 +50,7 @@
 .ops-roles { font-size: 0.85rem; opacity: 0.85; }
 .ops .ops-signout { background: none; color: var(--ops-header-fg); border-color: rgba(255, 255, 255, 0.35); padding: 0.2rem 0.7rem; }
 
+.ops-update-banner { display: flex; gap: 0.75rem; align-items: center; justify-content: center; padding: 0.4rem 1rem; background: var(--ops-accent-soft); color: var(--ops-fg); font-size: 0.92rem; }
 .ops-main { flex: 1; width: 100%; max-width: 90rem; margin: 0 auto; padding: 1rem 1.25rem 2rem; }
 .ops-signin { max-width: 32rem; margin: 3rem auto; display: flex; flex-direction: column; gap: 0.75rem; background: var(--ops-surface); border: 1px solid var(--ops-border); border-radius: 0.6rem; padding: 1.5rem; }
 .ops-signin h1 { font-size: 1.25rem; margin: 0; }
@@ -95,6 +96,25 @@
 .ops-form { display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
 .ops-form label { display: flex; flex-direction: column; gap: 0.25rem; width: 100%; font-size: 0.9rem; }
 .ops-form textarea { width: 100%; resize: vertical; }
+
+/* ペルソナ(§15.1 の M10) */
+.ops button.ops-danger { border-color: var(--ops-error); color: var(--ops-error); align-self: flex-start; }
+.ops-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.ops-file { display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer; padding: 0.4rem 0.9rem; border: 1px solid var(--ops-border); border-radius: 0.5rem; background: var(--ops-surface); align-self: flex-start; }
+.ops-file input[type="file"] { width: 0.1px; height: 0.1px; opacity: 0; position: absolute; }
+.ops-file:focus-within { outline: 2px solid var(--ops-accent); outline-offset: 2px; }
+.ops-inspection p { margin: 0.2rem 0; }
+.ops-findings { margin: 0.2rem 0; padding-left: 1.2rem; font-size: 0.88rem; }
+.ops-preview { display: flex; flex-direction: column; gap: 0.5rem; border-top: 1px solid var(--ops-border); padding-top: 0.75rem; }
+.ops-preview h3 { font-size: 1rem; margin: 0.4rem 0 0; }
+.ops-chat { display: flex; flex-direction: column; gap: 0.35rem; max-height: 22rem; overflow-y: auto; background: var(--ops-surface); border: 1px solid var(--ops-border); border-radius: 0.5rem; padding: 0.5rem 0.7rem; min-height: 4rem; }
+.ops-bubble { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ops-bubble.character { color: var(--ops-accent); }
+.ops-chat-input { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.ops-chat-input input { flex: 1 1 16rem; font: inherit; padding: 0.35rem 0.5rem; border-radius: 0.4rem; border: 1px solid var(--ops-border); background: var(--ops-surface); color: var(--ops-fg); }
+.ops-checks { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.9rem; }
+.ops-turns { margin: 0.3rem 0; padding-left: 1.3rem; font-size: 0.88rem; }
+.ops-panel h4 { margin: 0 0 0.3rem; font-size: 0.95rem; }
 
 /* ダッシュボード */
 .ops-panels { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr)); gap: 1rem; }

@@ -15,7 +15,9 @@ eval-reports
 tests
 infra
 legal
-personas
+# ペルソナ定義は、サンプルだけを入れる(デザイナの参考。読み取り専用。§15.1 の M10)
+personas/*
+!personas/sample_*
 scripts
 *.md
 !README.md

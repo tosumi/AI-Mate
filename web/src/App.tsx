@@ -9,6 +9,7 @@ import { Chat } from "./Chat";
 import { Consent } from "./Consent";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { Memories } from "./Memories";
+import { NewVersionBanner } from "./NewVersionBanner";
 import { SettingsView } from "./SettingsView";
 import { type AppConfig, loadConfig } from "./config";
 
@@ -117,6 +118,7 @@ export function App() {
           </button>
         )}
       </header>
+      <NewVersionBanner />
       <main>
         <ErrorBoundary>
           {phase === "loading" && <p aria-busy="true">読み込んでいます…</p>}

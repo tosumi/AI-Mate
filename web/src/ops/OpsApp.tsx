@@ -5,6 +5,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ErrorBoundary } from "../ErrorBoundary";
+import { NewVersionBanner } from "../NewVersionBanner";
 import { recall, remember } from "../remember";
 import { ApiError } from "../api";
 import { signInErrorMessage } from "../auth";
@@ -15,16 +16,18 @@ import { loadOpsConfig } from "./config";
 import { Dashboard } from "./Dashboard";
 import { useIdleTimeout } from "./idle";
 import { label, ROLE_LABELS } from "./labels";
+import { Personas } from "./Personas";
 import { Ratings } from "./Ratings";
 import { Reports } from "./Reports";
 import "./ops.css";
 
 type Phase = "loading" | "unavailable" | "signed-out" | "main" | "timed-out" | "error";
-type Tab = "reports" | "ratings" | "audit" | "dashboard";
+type Tab = "reports" | "ratings" | "personas" | "audit" | "dashboard";
 
 const TABS: { id: Tab; label: string; permission: string }[] = [
   { id: "reports", label: "報告", permission: "view_reports" },
   { id: "ratings", label: "評価", permission: "view_ratings" },
+  { id: "personas", label: "ペルソナ", permission: "view_personas" },
   { id: "audit", label: "監査ログ", permission: "view_audit" },
   { id: "dashboard", label: "ダッシュボード", permission: "view_system" },
 ];
@@ -124,6 +127,7 @@ export function OpsApp() {
           </div>
         )}
       </header>
+      <NewVersionBanner className="ops-update-banner" />
       <main className="ops-main">
         <ErrorBoundary>
           {phase === "loading" && <p aria-busy="true">読み込んでいます…</p>}
@@ -145,6 +149,7 @@ export function OpsApp() {
               {tabs.length === 0 && <p className="ops-muted">あなたのロールで見られる画面はありません。</p>}
               {current === "reports" && <Reports api={api} canHandle={me.permissions.includes("handle_reports")} />}
               {current === "ratings" && <Ratings api={api} />}
+              {current === "personas" && <Personas api={api} permissions={me.permissions} />}
               {current === "audit" && <AuditLogs api={api} />}
               {current === "dashboard" && <Dashboard api={api} />}
             </>

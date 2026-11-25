@@ -28,7 +28,11 @@ GUARDRAIL_TURN_KEYS = (
 # スクリーニングの検出として返す項目(details は、検出の根拠を含みうるので返さない)
 FINDING_KEYS = ("layer", "category", "severity", "detector", "score", "action")
 # 監査ログの details_json のうち、返してよい項目
-AUDIT_DETAIL_KEYS = ("decision", "roles", "permission", "target", "report_id", "status", "memo_changed")
+AUDIT_DETAIL_KEYS = (
+    "decision", "roles", "permission", "target", "report_id", "status", "memo_changed",
+    # キャラクタの提出・公開(§15.1 の M10)
+    "character_id", "version_label", "submission_id", "outcome",
+)  # fmt: skip
 
 
 def pseudonym(user_id: uuid.UUID | str) -> str:

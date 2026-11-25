@@ -28,13 +28,17 @@ const csp = [
 ].join("; ");
 
 const config = {
-  navigationFallback: { rewrite: "/index.html", exclude: ["/assets/*", "/sw.js"] },
+  navigationFallback: { rewrite: "/index.html", exclude: ["/assets/*", "/sw.js", "/version.json"] },
   // Service Worker は、古いものが残らないように、キャッシュさせない
   routes: [
     { route: "/sw.js", headers: { "Cache-Control": "no-cache" } },
+    // いまの版(開いたままの画面が、新しい版の配信に気づくために読む。§15.1 の M10)
+    { route: "/version.json", headers: { "Cache-Control": "no-cache" } },
     // 画面の入口は、毎回新しい版かを確かめさせる(配信のあとに、古い画面が残らないように)。assets/ は名前に版が入る
     { route: "/", headers: { "Cache-Control": "no-cache" } },
     { route: "/index.html", headers: { "Cache-Control": "no-cache" } },
+    { route: "/ops", headers: { "Cache-Control": "no-cache" } },
+    { route: "/designer", headers: { "Cache-Control": "no-cache" } },
   ],
   globalHeaders: {
     "Content-Security-Policy": csp,

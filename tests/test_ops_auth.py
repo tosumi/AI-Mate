@@ -105,12 +105,15 @@ def test_config_is_optional_but_not_partial():
 
 
 def test_role_grants_match_the_spec_table():
-    # 仕様書 §15.1 の M9 の表と同じであること(表を変えたら、ここも変える)
+    # 仕様書 §15.1 の M9 の表(M10 でキャラクタの設計・公開を追加)と同じであること(表を変えたら、ここも変える)
     expected = {
-        Role.DESIGNER: {"view_self", "view_ratings"},
-        Role.APPROVER: {"view_self", "view_ratings"},
+        Role.DESIGNER: {"view_self", "view_ratings", "view_personas", "submit_personas", "preview_personas"},
+        Role.APPROVER: {"view_self", "view_ratings", "view_personas", "publish_personas", "preview_personas"},
         Role.SUPPORT: {"view_self", "view_reports", "handle_reports", "view_ratings"},
-        Role.ADMIN: {"view_self", "view_reports", "handle_reports", "view_ratings", "view_audit", "view_system"},
+        Role.ADMIN: {
+            "view_self", "view_reports", "handle_reports", "view_ratings", "view_audit", "view_system",
+            "view_personas", "submit_personas", "publish_personas", "preview_personas",
+        },
         Role.AUDITOR: {"view_self", "view_audit"},
     }
     assert {role: {p.value for p in grants} for role, grants in GRANTS.items()} == expected

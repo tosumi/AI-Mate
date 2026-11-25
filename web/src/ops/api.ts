@@ -33,6 +33,23 @@ export type MetricSeries = { id: string; label: string; unit: string; points: [s
 export type MetricPanel = { id: string; title: string; configured: boolean; available: boolean; series: MetricSeries[] };
 export type SystemMetrics = { period: Period; interval: string; start: string; end: string; generated_at: string; panels: MetricPanel[] };
 
+export type PersonaVersion = { version: number; version_label: string | null; status: string; created_at: string };
+export type PersonaCharacter = { character_id: string; name: string; versions: PersonaVersion[] };
+export type PersonaSubmission = {
+  submission_id: string; character_id: string; version_label: string; name: string | null; submitted_by: string; submitted_at: string;
+  status: "pending" | "approved" | "rejected"; decided_by: string | null; decided_at: string | null; published_version: number | null;
+};
+export type PersonaFinding = { code: string; level: string; message: string; path: string };
+export type Inspection = {
+  ok: boolean; findings: PersonaFinding[]; blocking: string[];
+  scenarios: { passed: number; total: number; failed: { scenario: string; title: string; problems: string[] }[]; modes: Record<string, number> } | null;
+};
+export type SubmissionDetail = PersonaSubmission & {
+  definition: Record<string, unknown>; lint_json: PersonaFinding[]; simulation_summary: string; notes: string | null;
+  current_version: { version: number; version_label: string | null } | null; changes: { path: string; before: unknown; after: unknown }[];
+};
+export type PreviewAction = { type: string; text?: string };
+
 export class OpsApi {
   private readonly baseUrl: string;
   private readonly token: TokenSource;
@@ -48,7 +65,16 @@ export class OpsApi {
       headers: { Authorization: `Bearer ${await this.token()}`, "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    if (!response.ok) throw toError(response.status);
+    if (!response.ok) {
+      // 運営者に伝えてよい理由(提出した本人は承認できない、など)は、サーバーの文面を使う
+      let detail: unknown;
+      try {
+        detail = ((await response.json()) as { detail?: unknown }).detail;
+      } catch {
+        detail = undefined;
+      }
+      throw toError(response.status, typeof detail === "string" && [403, 409, 422, 429].includes(response.status) ? detail : undefined);
+    }
     return (await response.json()) as T;
   }
 
@@ -79,6 +105,62 @@ export class OpsApi {
   systemMetrics(period: Period): Promise<SystemMetrics> {
     return this.request("GET", `/system/metrics?${query({ period })}`);
   }
+
+  personas(): Promise<{ characters: PersonaCharacter[]; pending: PersonaSubmission[] }> {
+    return this.request("GET", "/personas");
+  }
+
+  submissions(status: string): Promise<{ submissions: PersonaSubmission[] }> {
+    return this.request("GET", `/personas/submissions?${query({ status })}`);
+  }
+
+  submission(id: string): Promise<SubmissionDetail> {
+    return this.request("GET", `/personas/submissions/${encodeURIComponent(id)}`);
+  }
+
+  parsePersonaYaml(text: string): Promise<{ definition: Record<string, unknown> }> {
+    return this.request("POST", "/personas/yaml", { text });
+  }
+
+  inspectPersona(definition: Record<string, unknown>): Promise<Inspection> {
+    return this.request("POST", "/personas/inspect", { definition });
+  }
+
+  submitPersona(definition: Record<string, unknown>): Promise<{ submission_id: string; inspection: Inspection }> {
+    return this.request("POST", "/personas/submissions", { definition });
+  }
+
+  approvePersona(id: string, notes: string): Promise<{ published_version: number; character_id: string; version_label: string }> {
+    return this.request("POST", `/personas/submissions/${encodeURIComponent(id)}/approve`, { notes: notes || null });
+  }
+
+  rejectPersona(id: string, notes: string): Promise<{ rejected: boolean }> {
+    return this.request("POST", `/personas/submissions/${encodeURIComponent(id)}/reject`, { notes: notes || null });
+  }
+
+  rollbackPersona(characterId: string, to: string): Promise<{ published_version: number }> {
+    return this.request("POST", `/personas/${encodeURIComponent(characterId)}/rollback`, { to });
+  }
+
+  deprecatePersona(characterId: string): Promise<{ deprecated: number }> {
+    return this.request("POST", `/personas/${encodeURIComponent(characterId)}/deprecate`);
+  }
+
+  personaDiff(characterId: string, first: number, second: number): Promise<{ changes: { path: string; before: unknown; after: unknown }[] }> {
+    return this.request("GET", `/personas/${encodeURIComponent(characterId)}/diff?${query({ first: String(first), second: String(second) })}`);
+  }
+
+  previewScenarios(characterId?: string): Promise<{ scenarios: { id: string; title: string }[] }> {
+    return this.request("GET", `/personas/scenarios?${query({ character_id: characterId })}`);
+  }
+
+  previewChat(definition: Record<string, unknown>, sessionId: string | null, text: string): Promise<{ session_id: string; actions: PreviewAction[] }> {
+    return this.request("POST", "/personas/preview/chat", { definition, session_id: sessionId, text });
+  }
+
+  previewSimulate(definition: Record<string, unknown>, scenarios: string[]): Promise<{ scenarios: { scenario: string; title: string; ok: boolean; violations: string[]; failures: string[]; turns: { no: number; text: string; mode: string; reply?: string | null }[] }[]; modes: Record<string, number> }> {
+    return this.request("POST", "/personas/preview/simulate", { definition, scenarios });
+  }
 }
 
 function query(params: Record<string, string | undefined>): string {
@@ -88,13 +170,15 @@ function query(params: Record<string, string | undefined>): string {
 }
 
 // サーバーの文面ではなく、状態に応じた文面を出す(運営者の画面の文面を、ここでそろえる)
-function toError(status: number): ApiError {
+function toError(status: number, detail?: string): ApiError {
   const messages: Record<number, string> = {
     401: "サインインの有効期限が切れました。もう一度サインインしてください。",
     403: "この操作の権限がありません。",
     404: "見つかりませんでした。",
+    409: "ほかの操作と重なったか、すでに処理されています。",
+    429: "回数が多すぎます。しばらく待ってから、もう一度お試しください。",
     422: "入力の内容が正しくありません。",
     503: "いまは使えません。少し待って、もう一度お試しください。",
   };
-  return new ApiError(status, "ops_error", messages[status] ?? "通信に失敗しました。少し待って、もう一度お試しください。");
+  return new ApiError(status, "ops_error", detail ?? messages[status] ?? "通信に失敗しました。少し待って、もう一度お試しください。");
 }

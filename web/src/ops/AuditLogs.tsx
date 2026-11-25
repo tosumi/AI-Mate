@@ -16,6 +16,7 @@ const RANGES = [
   { hours: 24 * 30, label: "30日" },
 ];
 const PAGE = 100;
+const OUTCOMES: Record<string, string> = { requested: "要求", done: "済み", refused: "断った" };
 
 export function AuditLogs({ api }: { api: OpsApi }) {
   const [actorType, setActorType] = useState("");
@@ -97,5 +98,9 @@ function describe(details: Record<string, unknown>): string {
   if (typeof details.report_id === "string") parts.push(`報告: ${details.report_id}`);
   if (typeof details.status === "string") parts.push(`状況: ${label(STATUS_LABELS, details.status)}`);
   if (details.memo_changed === true) parts.push("メモを変更");
+  // キャラクタの提出・公開(§15.1 の M10)
+  if (typeof details.character_id === "string") parts.push(`キャラクタ: ${details.character_id}${typeof details.version_label === "string" ? ` ${details.version_label}` : ""}`);
+  if (typeof details.submission_id === "string") parts.push(`提出: ${details.submission_id.slice(0, 8)}`);
+  if (typeof details.outcome === "string") parts.push(`結果: ${OUTCOMES[details.outcome.split(":")[0]] ?? details.outcome}${details.outcome.includes(":") ? `(${details.outcome.split(":")[1]})` : ""}`);
   return parts.join(" / ") || "—";
 }

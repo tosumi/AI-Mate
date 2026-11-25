@@ -1,0 +1,180 @@
+/* ペルソナデザイナの画面(/designer)。PC を主に、スマホでも編集できる。外部のフォント・素材は読み込まない。 */
+.dz {
+  --dz-bg: #f6f5f2;
+  --dz-surface: #ffffff;
+  --dz-fg: #1f2328;
+  --dz-muted: #5f6670;
+  --dz-border: #d9d6cf;
+  --dz-header: #3b2f5c;
+  --dz-header-fg: #f5f2ff;
+  --dz-accent: #6a4fc1;
+  --dz-accent-soft: #ece6ff;
+  --dz-other: #8a8f98;
+  --dz-error: #b42318;
+  --dz-warning: #8a5a00;
+  --dz-ok: #2f6f62;
+  min-height: 100vh;
+  background: var(--dz-bg);
+  color: var(--dz-fg);
+  display: flex;
+  flex-direction: column;
+}
+@media (prefers-color-scheme: dark) {
+  .dz {
+    --dz-bg: #15141a;
+    --dz-surface: #1e1c25;
+    --dz-fg: #ebe8f2;
+    --dz-muted: #a7a2b3;
+    --dz-border: #39354a;
+    --dz-header: #241c3d;
+    --dz-header-fg: #ece6ff;
+    --dz-accent: #a993ff;
+    --dz-accent-soft: #2c2445;
+    --dz-other: #8d93a0;
+    --dz-error: #ff8a80;
+    --dz-warning: #f2c46d;
+    --dz-ok: #6cc3ae;
+  }
+}
+.dz button { background: var(--dz-surface); color: var(--dz-fg); border-color: var(--dz-border); min-height: 2.25rem; }
+.dz button.dz-primary { background: var(--dz-accent); border-color: var(--dz-accent); color: #fff; font-weight: 600; }
+.dz button.dz-danger { border-color: var(--dz-error); color: var(--dz-error); align-self: flex-start; }
+.dz input[type="text"], .dz input[type="number"], .dz textarea, .dz select {
+  font: inherit; padding: 0.35rem 0.5rem; border-radius: 0.4rem; border: 1px solid var(--dz-border); background: var(--dz-surface); color: var(--dz-fg);
+}
+.dz :focus-visible { outline: 2px solid var(--dz-accent); outline-offset: 2px; }
+.dz input[type="range"] { accent-color: var(--dz-accent); }
+
+.dz-header { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; padding: 0.5rem 1.25rem; background: var(--dz-header); color: var(--dz-header-fg); position: sticky; top: 0; z-index: 10; }
+.dz-brand { font-weight: 700; white-space: nowrap; }
+.dz-badge { margin-left: 0.35rem; padding: 0 0.45rem; border-radius: 0.3rem; background: var(--dz-accent); color: #fff; font-size: 0.8rem; }
+.dz-pages { display: flex; gap: 0.25rem; flex: 1; overflow-x: auto; }
+.dz .dz-pages button { background: none; border: none; color: var(--dz-header-fg); opacity: 0.8; white-space: nowrap; }
+.dz .dz-pages button.active { opacity: 1; background: rgba(255, 255, 255, 0.15); font-weight: 600; }
+.dz .dz-signout { margin-left: auto; background: none; color: var(--dz-header-fg); border-color: rgba(255, 255, 255, 0.35); }
+.dz-update-banner { display: flex; gap: 0.75rem; justify-content: center; align-items: center; padding: 0.4rem 1rem; background: var(--dz-accent-soft); }
+.dz-main { flex: 1; width: 100%; max-width: 96rem; margin: 0 auto; padding: 1rem 1.25rem 2rem; display: flex; flex-direction: column; gap: 0.75rem; }
+
+.dz-center { max-width: 40rem; margin: 2rem auto; display: flex; flex-direction: column; gap: 0.9rem; }
+.dz-center h1 { font-size: 1.4rem; margin: 0; }
+.dz-mode-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0.75rem; }
+.dz .dz-mode-card { display: flex; flex-direction: column; gap: 0.4rem; text-align: left; padding: 1rem 1.1rem; border-radius: 0.7rem; border-width: 2px; }
+.dz .dz-mode-card strong { font-size: 1.1rem; }
+.dz .dz-mode-card:focus, .dz .dz-mode-card:hover { border-color: var(--dz-accent); background: var(--dz-accent-soft); }
+.dz-start h1 { font-size: 1.3rem; }
+.dz-start-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: 1rem; align-items: start; }
+
+.dz-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.dz-source { font-weight: 600; margin-right: auto; overflow-wrap: anywhere; }
+.dz-message { margin: 0; color: var(--dz-ok); }
+.dz-file { display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer; padding: 0.4rem 0.9rem; border: 1px solid var(--dz-border); border-radius: 0.5rem; background: var(--dz-surface); min-height: 2.25rem; }
+.dz-file input[type="file"] { width: 0.1px; height: 0.1px; opacity: 0; position: absolute; }
+.dz-file:focus-within { outline: 2px solid var(--dz-accent); outline-offset: 2px; }
+.dz-dialog { border: 2px solid var(--dz-accent); border-radius: 0.6rem; background: var(--dz-surface); padding: 0.9rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.dz-dialog h3 { margin: 0; }
+
+/* 1画面の「デザイナ」: 項目の一覧 | 編集 | プレビュー */
+.dz-layout { display: grid; grid-template-columns: 12rem minmax(0, 1fr) minmax(18rem, 26rem); gap: 1rem; align-items: start; }
+.dz-sections { display: flex; flex-direction: column; gap: 0.25rem; position: sticky; top: 4rem; }
+.dz .dz-sections button { display: flex; flex-direction: column; align-items: flex-start; text-align: left; border: none; background: none; border-radius: 0.45rem; padding: 0.4rem 0.6rem; }
+.dz .dz-sections button.active { background: var(--dz-accent-soft); color: var(--dz-accent); font-weight: 600; }
+.dz-editor { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+.dz-editor h2, .dz-page h2, .dz-wizard h2 { font-size: 1.15rem; margin: 0; }
+.dz-preview { position: sticky; top: 4rem; max-height: calc(100vh - 5rem); overflow-y: auto; display: flex; flex-direction: column; gap: 0.9rem; background: var(--dz-surface); border: 1px solid var(--dz-border); border-radius: 0.6rem; padding: 0.8rem 0.9rem; }
+.dz-preview h3 { font-size: 0.98rem; margin: 0 0 0.35rem; }
+@media (max-width: 72rem) {
+  .dz-layout { grid-template-columns: 11rem minmax(0, 1fr); }
+  .dz-layout .dz-preview { grid-column: 1 / -1; position: static; max-height: none; }
+}
+@media (max-width: 44rem) {
+  .dz-header { padding: 0.4rem 0.75rem; gap: 0.5rem; }
+  .dz-pages { order: 3; width: 100%; flex: none; }
+  .dz-main { padding: 0.75rem; }
+  .dz-layout { grid-template-columns: minmax(0, 1fr); }
+  .dz-sections { position: static; flex-direction: row; overflow-x: auto; }
+  .dz .dz-sections button .dz-hint { display: none; }
+  .dz .dz-sections button { white-space: nowrap; }
+}
+
+/* 入力 */
+.dz-group { border: 1px solid var(--dz-border); border-radius: 0.6rem; background: var(--dz-surface); padding: 0.7rem 0.9rem 0.9rem; display: flex; flex-direction: column; gap: 0.6rem; min-width: 0; }
+.dz-group legend { font-weight: 600; padding: 0 0.3rem; }
+.dz-field { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+.dz-field > label { font-size: 0.92rem; }
+.dz-slider { display: grid; grid-template-columns: minmax(0, 1fr) 5rem; grid-template-areas: "label label" "range number" "hint hint"; gap: 0.2rem 0.6rem; align-items: center; }
+.dz-slider > label { grid-area: label; }
+.dz-slider input[type="range"] { grid-area: range; width: 100%; min-height: 1.75rem; }
+.dz-slider input[type="number"] { grid-area: number; width: 100%; }
+.dz-slider .dz-value { display: none; }
+.dz-slider .dz-hint { grid-area: hint; }
+.dz-text textarea { width: 100%; resize: vertical; }
+.dz-text input { width: 100%; }
+.dz-hint { color: var(--dz-muted); font-size: 0.85rem; margin: 0; }
+.dz-check, .dz-radio { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 2rem; }
+.dz-checks, .dz-choices { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; }
+.dz-row { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: flex-end; }
+.dz-row > .dz-field { flex: 1 1 12rem; }
+.dz-effects { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr)); gap: 0.4rem 1rem; }
+.dz-item { border-top: 1px dashed var(--dz-border); padding-top: 0.6rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.dz-override { display: flex; flex-direction: column; gap: 0.25rem; }
+.dz-card { background: var(--dz-accent-soft); border-radius: 0.5rem; padding: 0.5rem 0.7rem; margin: 0; font-size: 0.9rem; }
+.dz-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: 0.5rem; }
+
+/* 結果の表示 */
+.dz-error { color: var(--dz-error); }
+.dz-warning { color: var(--dz-warning); }
+.dz-ok { color: var(--dz-ok); }
+.dz-findings { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.88rem; }
+.dz-finding { border-left: 3px solid var(--dz-border); padding-left: 0.5rem; }
+.dz-finding.error { border-left-color: var(--dz-error); }
+.dz-finding.warning { border-left-color: var(--dz-warning); }
+.dz-code { font-family: ui-monospace, monospace; font-weight: 600; }
+.dz-path { color: var(--dz-muted); }
+.dz-scroll { overflow-x: auto; }
+.dz-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; font-variant-numeric: tabular-nums; }
+.dz-table th, .dz-table td { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--dz-border); text-align: left; white-space: nowrap; }
+.dz-table th { color: var(--dz-muted); font-weight: 600; }
+.dz-table td.dz-wrap { white-space: normal; min-width: 16rem; }
+.dz-diff td { white-space: normal; overflow-wrap: anywhere; }
+.dz-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.dz-radar { margin: 0 auto; max-width: 22rem; }
+.dz-radar svg { display: block; width: 100%; height: auto; overflow: visible; }
+.dz-radar-grid { fill: none; stroke: var(--dz-border); stroke-width: 1; }
+.dz-radar-label { fill: var(--dz-muted); font-size: 11px; }
+.dz-radar-main { fill: var(--dz-accent); fill-opacity: 0.18; stroke: var(--dz-accent); stroke-width: 2; stroke-linejoin: round; }
+.dz-radar-other { fill: none; stroke: var(--dz-other); stroke-width: 2; stroke-dasharray: 5 4; }
+.dz-radar-dot { fill: var(--dz-accent); stroke: var(--dz-surface); stroke-width: 2; }
+.dz-legend { display: flex; justify-content: center; align-items: center; gap: 0.4rem 0.6rem; flex-wrap: wrap; font-size: 0.85rem; color: var(--dz-muted); }
+.dz-swatch { display: inline-block; width: 1.2rem; height: 0; border-top: 2px solid var(--dz-accent); }
+.dz-swatch.other { border-top: 2px dashed var(--dz-other); margin-left: 0.6rem; }
+.dz-bars { display: flex; flex-direction: column; gap: 0.25rem; max-width: 32rem; }
+.dz-bar-row { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) 3rem; gap: 0.5rem; align-items: center; font-size: 0.88rem; }
+.dz-bar-track { height: 0.6rem; background: var(--dz-accent-soft); border-radius: 0.3rem; overflow: hidden; }
+.dz-bar-fill { display: block; height: 100%; background: var(--dz-accent); border-radius: 0.3rem; }
+.dz-bar-value { text-align: right; font-variant-numeric: tabular-nums; }
+.dz-page { display: flex; flex-direction: column; gap: 0.75rem; }
+.dz-run { border-top: 1px solid var(--dz-border); padding-top: 0.5rem; }
+.dz-run h3 { font-size: 1rem; margin: 0.3rem 0; }
+.dz-segmented { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--dz-border); border-radius: 0.45rem; overflow: hidden; align-self: flex-start; }
+.dz .dz-segmented button { border: none; border-radius: 0; }
+.dz .dz-segmented button + button { border-left: 1px solid var(--dz-border); }
+.dz .dz-segmented button[aria-pressed="true"] { background: var(--dz-accent-soft); color: var(--dz-accent); font-weight: 600; }
+
+/* 診断 */
+.dz-quiz { display: flex; flex-direction: column; gap: 0.5rem; }
+.dz-question { border: none; padding: 0.3rem 0; margin: 0; border-bottom: 1px dashed var(--dz-border); }
+.dz-question legend { padding: 0; font-size: 0.92rem; }
+.dz-scale { display: flex; gap: 0.4rem; margin-top: 0.25rem; }
+.dz-scale label { display: inline-flex; align-items: center; gap: 0.2rem; min-width: 2.5rem; min-height: 2rem; }
+.dz-result { border: 1px solid var(--dz-border); border-radius: 0.5rem; padding: 0.6rem 0.8rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.dz-result p { margin: 0; }
+
+/* ウィザード */
+.dz-wizard { display: flex; flex-direction: column; gap: 0.8rem; max-width: 52rem; width: 100%; margin: 0 auto; }
+.dz-steps { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.dz .dz-steps button { border: none; background: none; padding: 0.25rem 0.5rem; border-radius: 0.4rem; font-size: 0.88rem; color: var(--dz-muted); }
+.dz .dz-steps li.done button { color: var(--dz-fg); }
+.dz .dz-steps li.active button { background: var(--dz-accent-soft); color: var(--dz-accent); font-weight: 600; }
+.dz-wizard-nav { display: flex; justify-content: space-between; }
+.dz-wizard .dz-preview { position: static; max-height: none; }
+.dz-review { display: flex; flex-direction: column; gap: 0.75rem; }

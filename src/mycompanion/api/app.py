@@ -19,25 +19,28 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated, Any, Literal, Protocol
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
 from mycompanion import config as cfg
 from mycompanion import telemetry
 from mycompanion.account.service import AccountError, AccountOps
-from mycompanion.api.auth import AuthError, OperatorTokenVerifier, TokenVerifier
+from mycompanion.api.auth import OperatorTokenVerifier, TokenVerifier
+from mycompanion.api.designer import create_designer_router
 from mycompanion.api.ops import create_ops_router
+from mycompanion.api.users import AuthedUser, CurrentUser, current_user
 from mycompanion.channel.types import TurnInput, TurnOutput
 from mycompanion.engine.engine import Engine, EngineError
 from mycompanion.engine.memory_ops import MemoryOpError, MemoryOps
 from mycompanion.llm.client import Persona
 from mycompanion.ops.audit import OperatorAuditLog
 from mycompanion.ops.metrics import SystemMetrics
+from mycompanion.ops.personas import LivePreview, PersonaPublisher, PersonaStore
 from mycompanion.ops.store import OperatorStore
 from mycompanion.push.service import PushService, Subscription, keyvault_loader, push_subject
 
@@ -98,11 +101,12 @@ class AppDeps:
     ops_audit: OperatorAuditLog | None = None
     ops_store: OperatorStore | None = None
     ops_metrics: SystemMetrics | None = None
-
-
-@dataclass(frozen=True)
-class CurrentUser:
-    user_id: uuid.UUID
+    # キャラクタの提出・公開と、実際のモデルでの試し(§15.1 の M10)
+    ops_personas: PersonaPublisher | None = None
+    ops_personas_store: PersonaStore | None = None
+    ops_preview: LivePreview | None = None
+    # デザイナのサンプルの置き場所(§15.1 の M10。既定: personas/)
+    personas_root: Path | None = None
 
 
 class TurnResponse(BaseModel):
@@ -226,34 +230,6 @@ class CloseSessionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     character_id: str = Field(min_length=1)
-
-
-_bearer = HTTPBearer(auto_error=False)
-
-
-async def current_user(
-    request: Request,
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
-) -> CurrentUser:
-    """トークンを検証し、内部の user_id を決める。失敗の理由は返さない。"""
-    deps: AppDeps = request.app.state.deps
-    unauthorized = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="認証が必要です",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    if credentials is None:
-        raise unauthorized
-    try:
-        principal = await deps.verifier.verify(credentials.credentials)
-    except AuthError:
-        raise unauthorized from None
-    user_id = await deps.users.resolve_user(principal.idp, principal.subject)
-    return CurrentUser(user_id=user_id)
-
-
-# 認証済みのユーザー(エンドポイントの引数に使う)
-AuthedUser = Annotated[CurrentUser, Depends(current_user)]
 
 
 def create_app(deps: AppDeps) -> FastAPI:
@@ -693,6 +669,8 @@ def create_app(deps: AppDeps) -> FastAPI:
             user.user_id, changes, allow_age_flag=deps.env_name != "prod"
         )
 
+    # デザイナの API(§15.1 の M10。一般ユーザー。状態を持たない)
+    app.include_router(create_designer_router(deps.personas_root))
     # 運営者の API(§15.1 の M9。一般ユーザーの API とは、経路とトークンを分ける)
     app.include_router(create_ops_router())
     return app
@@ -719,7 +697,7 @@ def create_app_from_env() -> FastAPI:
     from mycompanion.api.auth import EntraOperatorTokenVerifier, EntraTokenVerifier
     from mycompanion.db.cosmos import open_cosmos
     from mycompanion.db.memory_store import PgMemoryStore
-    from mycompanion.db.ops_store import PgOperatorAuditLog, PgOperatorStore
+    from mycompanion.db.ops_store import PgOperatorAuditLog, PgOperatorStore, PgPersonaStore
     from mycompanion.db.postgres import Database
     from mycompanion.db.push_store import PgPushStore
     from mycompanion.db.stores import PgCosmosStores
@@ -769,6 +747,10 @@ def create_app_from_env() -> FastAPI:
         if deps.ops_verifier is not None:
             deps.ops_audit = PgOperatorAuditLog(database)
             deps.ops_store = PgOperatorStore(database, cosmos_stores)
+            # キャラクタの提出・公開(0022 の関数)と、実際のモデルでの試し(DB に書かない)
+            deps.ops_personas_store = PgPersonaStore(database)
+            deps.ops_personas = PersonaPublisher(deps.ops_personas_store)
+            deps.ops_preview = LivePreview(llm, settings)
             # ダッシュボード(対象のリソースの設定がなければ、すべて「未設定」と表示する)
             monitor_config = cfg.OperatorMonitorConfig.from_env()
             monitor_client = ArmMonitorClient() if monitor_config else None

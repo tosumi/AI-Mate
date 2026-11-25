@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+import psycopg
 from psycopg.types.json import Jsonb
 
 from mycompanion.db.cosmos import CosmosStores
@@ -104,3 +105,82 @@ class PgOperatorStore:
         return await self._rows(
             "SELECT * FROM ops_list_audit_logs(%s, %s, %s, %s, %s)", (since, until, actor_type, before, limit)
         )
+
+
+# ---------------------------------------------------------------------------
+# キャラクタの提出・公開(0022 の関数だけを使う。§15.1 の M10)
+# ---------------------------------------------------------------------------
+
+_DB_ERRORS = {
+    "InsufficientPrivilege": "forbidden",
+    "CheckViolation": "conflict",
+    "NoDataFound": "not_found",
+}
+
+
+class PgPersonaStore:
+    def __init__(self, database: Database) -> None:
+        self._db = database
+
+    async def _call(self, sql: str, params: tuple[Any, ...]) -> list[dict[str, Any]]:
+        from mycompanion.ops.personas import PersonaError
+
+        try:
+            async with self._db.pool.connection() as conn, conn.transaction():
+                cursor = await conn.execute(sql, params)
+                names = [d.name for d in cursor.description or []]
+                rows = await cursor.fetchall()
+        except psycopg.errors.RaiseException as exc:  # 関数の中の RAISE(ERRCODE の指定なし)
+            raise PersonaError("invalid", exc.diag.message_primary or "処理できませんでした") from None
+        except psycopg.Error as exc:
+            kind = _DB_ERRORS.get(type(exc).__name__)
+            if kind is None:
+                raise
+            raise PersonaError(kind, exc.diag.message_primary or "処理できませんでした") from None
+        return [dict(zip(names, row, strict=True)) for row in rows]
+
+    async def submit(
+        self, character_id: str, label: str, definition: dict[str, Any], row: dict[str, Any],
+        lint_json: list[dict[str, Any]], simulation: str, operator: str, now: datetime,
+    ) -> uuid.UUID:  # fmt: skip
+        rows = await self._call(
+            "SELECT ops_submit_persona(%s, %s, %s, %s, %s, %s, %s, %s) AS id",
+            (character_id, label, Jsonb(definition), Jsonb(row), Jsonb(lint_json), simulation, operator, now),
+        )
+        return rows[0]["id"]
+
+    async def list_submissions(self, status: str | None, limit: int) -> list[dict[str, Any]]:
+        return await self._call("SELECT * FROM ops_list_persona_submissions(%s, %s)", (status, limit))
+
+    async def get_submission(self, submission_id: uuid.UUID) -> dict[str, Any] | None:
+        rows = await self._call("SELECT * FROM ops_get_persona_submission(%s)", (submission_id,))
+        return rows[0] if rows else None
+
+    async def publish(self, submission_id: uuid.UUID, operator: str, notes: str | None, now: datetime) -> int:
+        rows = await self._call(
+            "SELECT ops_publish_persona_submission(%s, %s, %s, %s) AS version", (submission_id, operator, notes, now)
+        )
+        return int(rows[0]["version"])
+
+    async def reject(self, submission_id: uuid.UUID, operator: str, notes: str | None, now: datetime) -> bool:
+        rows = await self._call(
+            "SELECT ops_reject_persona_submission(%s, %s, %s, %s) AS ok", (submission_id, operator, notes, now)
+        )
+        return bool(rows[0]["ok"])
+
+    async def list_versions(self, character_id: str | None) -> list[dict[str, Any]]:
+        return await self._call("SELECT * FROM ops_list_persona_versions(%s)", (character_id,))
+
+    async def get_version(self, character_id: str, version: int) -> dict[str, Any] | None:
+        rows = await self._call("SELECT * FROM ops_get_persona_version(%s, %s)", (character_id, version))
+        return rows[0] if rows else None
+
+    async def rollback(self, character_id: str, label: str, operator: str, now: datetime) -> int:
+        rows = await self._call(
+            "SELECT ops_rollback_persona(%s, %s, %s, %s) AS version", (character_id, label, operator, now)
+        )
+        return int(rows[0]["version"])
+
+    async def deprecate(self, character_id: str, operator: str, now: datetime) -> int:
+        rows = await self._call("SELECT ops_deprecate_persona(%s, %s, %s) AS n", (character_id, operator, now))
+        return int(rows[0]["n"])
