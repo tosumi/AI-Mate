@@ -7,7 +7,7 @@ export const API = "http://api.e2e.test";
 type Screen = { id: string; title: string; text: string; items: { type: string; label: string; required: boolean }[] };
 
 const SCREENS: Screen[] = [
-  { id: "1", title: "はじめに", text: "MyCompanion へようこそ", items: [
+  { id: "1", title: "はじめに", text: "FureAI ペルソナ へようこそ", items: [
     { type: "terms", label: "[利用規約](【URL】)に同意します。", required: true },
     { type: "privacy", label: "プライバシーポリシーを確認しました。", required: true },
   ] },

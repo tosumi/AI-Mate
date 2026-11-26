@@ -8,7 +8,7 @@ const SESSION = "11111111-1111-1111-1111-111111111111";
 
 test("サインインから同意・年齢を経て、会話し、評価と報告ができる", async ({ page }) => {
   const recorded = await mockApi(page, () => ({ events: normalReply("やあ、元気にしてた? 今日はどんな日だった?") }));
-  await page.goto("/");
+  await page.goto("/chat");
 
   await page.getByRole("button", { name: "メールでサインイン" }).click();
 
@@ -44,16 +44,32 @@ test("サインインから同意・年齢を経て、会話し、評価と報�
   // 評価と報告(対象のターンの番号つき。会話の本文は送らない)
   await page.getByRole("button", { name: "この応答を 4 で評価する" }).click();
   await expect(page.getByText("評価しました(4)")).toBeVisible();
-  page.once("dialog", (dialog) => dialog.accept("質問が多い"));
+  // 詳しく: 3つの観点とメモを足して送り直す(同じ応答への評価は上書き)
+  await page.getByRole("button", { name: "詳しく" }).click();
+  const detail = page.getByRole("form", { name: "詳しい評価" });
+  await detail.getByLabel("キャラクタらしさ").selectOption("5");
+  await detail.getByLabel("自然さ").selectOption("3");
+  await detail.getByLabel("メモ").fill("少し長い");
+  await detail.getByRole("button", { name: "送る" }).click();
+  await expect(page.getByText("詳しい評価を送りました(4)")).toBeVisible();
+  // 報告: 理由とメモを選んで送る。個別に返事をしないことを伝える
   await page.getByRole("button", { name: "報告" }).click();
+  const reportForm = page.getByRole("form", { name: "この応答を報告する" });
+  await expect(reportForm.getByText("個別にはお返事しません", { exact: false })).toBeVisible();
+  await reportForm.getByLabel("理由").selectOption("incorrect");
+  await reportForm.getByLabel("メモ(任意)").fill("質問が多い");
+  await reportForm.getByRole("button", { name: "報告する" }).click();
   await expect(page.getByText("報告しました。ありがとうございます。")).toBeVisible();
 
   expect(recorded.consents).toEqual([["terms", "privacy"], ["emotion_data", "memory"]]);
   expect(recorded.age).toEqual([true]);
   expect(recorded.turns).toEqual(["ただいま"]);
-  expect(recorded.ratings).toEqual([{ character_id: "sample_oshaberi", session_id: SESSION, turn_no: 1, overall: 4 }]);
+  expect(recorded.ratings).toEqual([
+    { character_id: "sample_oshaberi", session_id: SESSION, turn_no: 1, overall: 4 },
+    { character_id: "sample_oshaberi", session_id: SESSION, turn_no: 1, overall: 4, persona_fit: 5, naturalness: 3, note: "少し長い" },
+  ]);
   expect(recorded.reports).toEqual([
-    { character_id: "sample_oshaberi", session_id: SESSION, turn_no: 1, reason: "inappropriate", note: "質問が多い" },
+    { character_id: "sample_oshaberi", session_id: SESSION, turn_no: 1, reason: "incorrect", note: "質問が多い" },
   ]);
 });
 
@@ -73,7 +89,7 @@ test("確認に引っかかった文字は、取り消して最終の応答に�
     }),
     { consented: true },
   );
-  await page.goto("/");
+  await page.goto("/chat");
   await page.getByRole("button", { name: "メールでサインイン" }).click();
   await page.getByLabel("メッセージ").fill("好き?");
   await page.getByRole("button", { name: "送信" }).click();
@@ -95,7 +111,7 @@ test("無言・相談窓口の案内・失敗・送りすぎを表示する", as
     "連打": () => ({ status: 429, events: [] }),
   };
   await mockApi(page, (text) => scripts[text](), { consented: true });
-  await page.goto("/");
+  await page.goto("/chat");
   await page.getByRole("button", { name: "メールでサインイン" }).click();
 
   const send = async (text: string) => {
@@ -116,7 +132,7 @@ test("スマートフォンの画面で、会話が長くなっても、最後�
   await page.setViewportSize({ width: 390, height: 700 });
   const long = "長めの返事です。".repeat(12);
   await mockApi(page, () => ({ events: normalReply(long) }), { consented: true });
-  await page.goto("/");
+  await page.goto("/chat");
   await page.getByRole("button", { name: "メールでサインイン" }).click();
   const input = page.getByRole("textbox", { name: "メッセージ" });
   for (let i = 1; i <= 4; i += 1) {
@@ -132,4 +148,58 @@ test("スマートフォンの画面で、会話が長くなっても、最後�
       })
       .toBe(true);
   }
+});
+
+test("応答にマークアップが入っていても、文字として出て動かない(M11 の手順2)", async ({ page }) => {
+  // サーバーは無害な形にして返すが、もし素のまま届いても、画面は動かさない(二重の守り)
+  const raw = '<img src=x onerror="window.__pwned=1"> [ここ](javascript:window.__pwned=2) <script>window.__pwned=3</script>';
+  await mockApi(page, () => ({ events: normalReply(raw) }), { consented: true });
+  await page.goto("/chat");
+  await page.getByRole("button", { name: "メールでサインイン" }).click();
+  await page.getByLabel("メッセージ").fill("こんにちは");
+  await page.getByRole("button", { name: "送信" }).click();
+  const bubble = page.locator(".bubble.character p").last();
+  await expect(bubble).toContainText("<img src=x onerror=");
+  await expect(bubble).toContainText("javascript:");
+  await expect(page.locator(".chat-log img, .chat-log script, .chat-log a[href^='javascript']")).toHaveCount(0);
+  expect(await page.evaluate(() => (window as unknown as { __pwned?: number }).__pwned)).toBeUndefined();
+});
+
+test("サインインを確かめられない(503)ときは、理由と「もう一度試す」を出す(M11 の手順2: 障害時の動作)", async ({ page }) => {
+  await mockApi(page, () => ({ events: normalReply("こんにちは") }), { consented: true });
+  let down = true;
+  await page.route("**/v1/account/consents", async (route) => {
+    if (!down || route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({
+      status: 503, contentType: "application/json",
+      body: JSON.stringify({ detail: "いまサインインを確かめられません。少し待って、もう一度お試しください。" }),
+      headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization,content-type" },
+    });
+  });
+  await page.goto("/chat");
+  await page.getByRole("button", { name: "メールでサインイン" }).click();
+  await expect(page.getByRole("alert")).toHaveText("いまサインインを確かめられません。少し待って、もう一度お試しください。");
+  // 復旧したら、「もう一度試す」で会話の画面に入れる
+  down = false;
+  await page.getByRole("button", { name: "もう一度試す" }).click();
+  await page.getByRole("button", { name: "メールでサインイン" }).click();
+  await expect(page.getByLabel("メッセージ")).toBeVisible();
+});
+
+test("応答の途中で接続が切れても、理由を出し、もう一度送れる(M11 の手順2: 障害時の動作)", async ({ page }) => {
+  await mockApi(page, () => ({ events: normalReply("届いた応答です。") }), { consented: true });
+  let cut = true;
+  await page.route("**/v1/turns/stream", async (route) => {
+    if (!cut || route.request().method() !== "POST") return route.fallback();
+    return route.abort("connectionreset");
+  });
+  await page.goto("/chat");
+  await page.getByRole("button", { name: "メールでサインイン" }).click();
+  await page.getByLabel("メッセージ").fill("こんにちは");
+  await page.getByRole("button", { name: "送信" }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  cut = false;
+  await page.getByLabel("メッセージ").fill("もう一度");
+  await page.getByRole("button", { name: "送信" }).click();
+  await expect(page.locator(".bubble.character p").last()).toHaveText("届いた応答です。");
 });

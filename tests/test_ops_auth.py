@@ -224,3 +224,19 @@ def test_every_ops_route_requires_a_permission():
 
 def test_permissions_enum_covers_the_table():
     assert {p.value for p in Permission} == set().union(*({p.value for p in g} for g in GRANTS.values()))
+
+
+
+def test_ops_answers_503_while_sign_in_cannot_be_checked_and_records_it():
+    """運営者のサインインの検証に届かないときも、503(少し待って)。要求は、未認証として監査ログに残る(M11 の手順2)。"""
+    from mycompanion.api.auth import AuthUnavailable
+
+    class _Down:
+        async def verify(self, token):
+            raise AuthUnavailable("down")
+
+    audit = InMemoryOperatorAuditLog()
+    client = TestClient(create_app(AppDeps(verifier=FakeUserVerifier(), users=FakeUsers(), ops_verifier=_Down(), ops_audit=audit)))
+    response = client.get("/ops/v1/me", headers={"Authorization": "Bearer t"})
+    assert response.status_code == 503
+    assert audit.entries[-1].decision == "unauthenticated"

@@ -181,7 +181,7 @@ test("30分操作がなければ、画面を消してサインアウトする", 
 });
 
 test("一般ユーザーの画面から、運営者の画面へのリンクはない", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/chat");
   await expect(page.getByRole("button", { name: "メールでサインイン" })).toBeVisible();
   await expect(page.locator('a[href*="/ops"]')).toHaveCount(0);
   await expect(page.getByText("運営")).toHaveCount(0);

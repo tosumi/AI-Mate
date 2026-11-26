@@ -17,7 +17,7 @@ test("話しかけてきたキャラクタを先に開き、メッセージを�
     consented: true,
     proactive: [MESSAGE],
   });
-  await page.goto("/");
+  await page.goto("/chat");
   await page.getByRole("button", { name: "メールでサインイン" }).click();
 
   // 話しかけてきたキャラクタ(一覧の2番目)が選ばれ、メッセージが会話の最初に出る
@@ -55,7 +55,7 @@ test("ほかのキャラクタからのメッセージには、一覧に印を�
       MESSAGE,
     ],
   });
-  await page.goto("/");
+  await page.goto("/chat");
   await page.getByRole("button", { name: "メールでサインイン" }).click();
   await expect(page.getByLabel("キャラクタ")).toHaveValue("sample_oshaberi");
   await expect(page.getByText("キャンプの話、また聞かせて")).toHaveCount(1);
@@ -69,7 +69,7 @@ test("ほかのキャラクタからのメッセージには、一覧に印を�
 
 test("画面を開いたまま話しかけられたら、画面に戻ったときに表示する(読み直さない)", async ({ page }) => {
   const recorded = await mockApi(page, () => ({ events: normalReply("やあ") }), { consented: true });
-  await page.goto("/");
+  await page.goto("/chat");
   await page.getByRole("button", { name: "メールでサインイン" }).click();
   await expect(page.getByLabel("キャラクタ")).toHaveValue("sample_oshaberi");
   await page.getByRole("textbox", { name: "メッセージ" }).fill("書きかけ");

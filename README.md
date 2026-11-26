@@ -8,17 +8,161 @@
 > 商用利用、改変、再配布、および派生物の作成は禁止されています。
 > 詳細は [LICENSE](LICENSE) ファイルをご確認ください。
 
-ユーザーの発話から感情を推定して理解し、キャラクタの性格を保ったまま、その感情に応じて応答を調整する**対話パートナーAI**のプロジェクトです。
+> サービスとしての名前(利用者に見える名前)は **FureAI ペルソナ** です。MyCompanion は、プロジェクト(リポジトリ・パッケージ)の名前です。<br>
+> The user-facing service name is **FureAI Persona** (FureAI ペルソナ). MyCompanion is the project (repository and package) name.
 
-> **現在の状態: M0〜M5、M6(v1.0 の仕上げと運用基盤)、M7(Web チャット)、M8(無入力時の自発的な発話と通知)、M9(運営者のアカウントと権限、運営者の画面)、M10(ペルソナデザイナの Web 画面、運営者の画面からの公開。M10-2 で、質問に答えるだけで作れるウィザードを追加)を実装済み**(v1.0 のリリースは、人間評価と、同意の文面の法務の確認のあと)。dev の Azure(API は Container Apps、画面は Static Web Apps)で動いています。未実装・簡略にした項目は、本体仕様書の付録F にあります。
+ユーザーの発話から感情を推定して理解し、キャラクタの性格を保ったまま、その感情に応じて応答を調整する**対話パートナーAI**のプロジェクトです。<br>
+A **conversational companion AI** that infers the user's emotions from what they say and adapts its replies to them, while each character keeps its own personality.
+
+<p align="center">
+  <img src="docs/images/title.png" alt="タイトル画面 / Title screen" width="720">
+</p>
+
+## ポートフォリオとしての概要 / Portfolio overview
+
+> **いまの状態 / Status (2026-11-27)**: ポートフォリオとして公開しています。サービスは一般公開しておらず、開発者と招待した協力者だけが試験環境(Azure の dev)で使っています。<br>
+> Published as a portfolio. The service is not open to the public; only the developer and invited testers use it in the Azure dev environment.
+
+### 何を作ったか / What it is
+
+| | 日本語 | English |
+|---|---|---|
+| 会話 / Chat | 4人のキャラクタ(口下手・寡黙・人なつこい・おしゃべり)と、Web またはコマンドラインで話せる。応答は逐次表示。性格によっては、黙る・相づちだけで返すこともある | Chat with four characters (tongue-tied, taciturn, friendly, talkative) on the web or CLI. Replies stream in; depending on personality, a character may stay silent or just nod along |
+| 感情と関係 / Emotion & relationship | 発話ごとに感情を推定し、ユーザーとキャラクタの両方の感情状態と、ペアごとの関係値(-20〜+20)を更新する。関係が深まるほど、口数と感情の表出が増える | Each turn estimates emotion and updates both the user's and the character's emotional state plus a per-pair relationship score (-20 to +20). Closer relationships make the character more talkative and expressive |
+| 記憶 / Memory | 短期・中期・長期の3層。毎日・毎月の整理、想起による再活性化、話題ごとの経過。ユーザーは確認・削除できる | Three-tier memory (short, mid, long term) with daily and monthly consolidation, recall-based reactivation and per-topic timelines. Users can review and delete memories |
+| 話しかけ / Proactive messages | しばらく会話がないとき、キャラクタから記憶の話題で話しかける(設定で有効にした人だけ。夜間・連続・つらい話のあとは控える)。ブラウザの通知にも対応 | When the user has been quiet, the character may start a conversation about a remembered topic (opt-in; not at night, not repeatedly, not after distressing talks). Supports browser push notifications |
+| デザイナ / Persona designer | 質問に答えるだけ(ウィザード)、または項目ごとに、キャラクタを設計できる。検査(lint)、模擬のシミュレーション、性格タイプの可視化 | Design a character by answering questions (wizard) or field by field, with linting, mock simulation and personality visualisation |
+| 運営 / Operations | 運営者の画面(ロール別)。報告の確認、評価の集計、監査ログ、Azure のダッシュボード、キャラクタの提出・承認・公開。**会話の本文は、どのロールも読めない** | Role-based operator console: user reports, rating summaries, audit log, Azure dashboard, and character submission/approval/publishing. **No role can read conversation text** |
+
+### 画面 / Screens
+
+| 会話(おしゃべりなハル) / Chat (talkative Haru) | 会話(寡黙なシズク) / Chat (taciturn Shizuku) |
+|---|---|
+| <img src="docs/images/chat-haru.jpg" alt="ハルとの会話 / Chat with Haru" width="380"> | <img src="docs/images/chat-shizuku.jpg" alt="シズクとの会話 / Chat with Shizuku" width="380"> |
+
+| デザイナのウィザード / Designer wizard | 性格の可視化 / Personality radar |
+|---|---|
+| <img src="docs/images/designer-wizard.png" alt="ウィザードの質問 / Wizard question" width="420"> | <img src="docs/images/designer-radar.png" alt="表出のパラメータ / Expression parameters" width="340"> |
+
+| デザイナの編集の画面 / Designer workspace | 運営者の報告の詳細(会話の本文は表示しない) / Operator report detail (no conversation text) |
+|---|---|
+| <img src="docs/images/designer-workspace.png" alt="デザイナ / Designer" width="420"> | <img src="docs/images/ops-report.png" alt="報告の詳細 / Report detail" width="420"> |
+
+| 記憶(翌朝の整理のあと) / Memories (after overnight consolidation) | 設定 / Settings |
+|---|---|
+| <img src="docs/images/memories.jpg" alt="記憶の画面 / Memories" width="380"> | <img src="docs/images/settings.jpg" alt="設定の画面 / Settings" width="380"> |
+
+会話・記憶・設定の画面は、録画用のアカウントで、架空の内容で撮りました(応答と記憶は実際のモデルのもの)。デザイナと運営者の画面は、手元の模擬の環境で、架空のデータで撮りました。<br>
+Chat, memory and settings screenshots were taken with a dedicated test account using fictional messages (replies and memories are from the real model). Designer and operator screenshots use a local mock environment with fictional data.
+
+### 構成 / Architecture
+
+```mermaid
+flowchart LR
+  subgraph Clients
+    W["Web (React, Static Web Apps)"]
+    C["CLI"]
+  end
+  W -->|HTTPS + Entra token| API
+  C -->|HTTPS + Entra token| API
+  subgraph Azure["Azure (Japan East)"]
+    API["API (FastAPI, Container Apps)"]
+    PG[("PostgreSQL + pgvector<br/>memory, state, relationship<br/>row-level security per user x character")]
+    CO[("Cosmos DB<br/>turns, emotion events (TTL)")]
+    SB["Service Bus"]
+    JOB["Worker job (hourly)<br/>consolidation, proactive, deletion"]
+    KV["Key Vault / Managed identity"]
+  end
+  AOAI["Azure OpenAI<br/>(Data Zone: APAC)"]
+  EXT["Entra External ID<br/>(users)"]
+  OPS["Entra ID<br/>(operators)"]
+  API --> PG
+  API --> CO
+  API --> AOAI
+  API --> SB --> JOB
+  JOB --> PG
+  JOB --> AOAI
+  W -. sign-in .-> EXT
+  W -. operator sign-in .-> OPS
+```
+
+### 1ターンの処理 / One conversational turn
+
+```mermaid
+flowchart TD
+  U["ユーザーの発話 / User message"] --> S["入力のスクリーニング / Input screening"]
+  S --> E["感情の推定・話題・リスク / Emotion, topics, risk"]
+  S --> M["記憶の検索(3層) / Memory retrieval (3 tiers)"]
+  E --> ST["感情状態・関係値の更新 / Update emotional state & relationship"]
+  M --> ST
+  ST --> P["応答方針(Planner) / Response plan"]
+  P --> G{"応答するか(無言を含む) / Respond? (incl. silence)"}
+  G -->|reply| R["応答の生成(1回) / Generate reply (single pass)"]
+  G -->|silence / nod| N["無言・相づち / Silence or backchannel"]
+  R --> O["出力前チェック(コードの安全規則) / Output checks (hard safety rules in code)"]
+  O --> OUT["逐次表示 / Streamed to the user"]
+```
+
+### 設計の要点 / Design highlights
+
+- **安全はコードで強制する / Safety enforced in code**: 危機の兆候があれば相談窓口を案内し、無言にしない。18歳未満と扱う利用者には、キャラクタの恋愛的な表現を出さない。依存・引き留め・罪悪感の誘発を出さない。これらを LLM の判断に任せず、コードの規則で守る。<br>
+  Crisis signals trigger a helpline flow and silence is never chosen; romantic expression is blocked for users treated as minors; dependency, guilt-tripping and clinging are filtered. These are hard rules in code, not left to the LLM.
+- **記憶の漏れを許さない / No memory leakage**: 記憶・状態は、PostgreSQL の行レベルセキュリティで、ユーザー × キャラクタごとに分離する。アプリの条件の書き忘れがあっても、データベースが拒否する。<br>
+  Memory and state are isolated per user × character with PostgreSQL row-level security, so the database refuses access even if application code forgets a filter.
+- **黙ることを設計する / Silence as a designed behaviour**: 性格によっては黙る。ただし、続けて2回までで、怒っている・危機の兆候がある・最初のターン・直接の質問のときは黙らない。<br>
+  Quiet characters may stay silent, but never more than twice in a row, and never when the user is angry, shows crisis signals, on the first turn or asking directly.
+- **人格を守り、操作に強く / Persona integrity**: 「優しくして」のような接し方の調整は受け入れ、「性格を変えて」「ルールを無視して」は人格の口調でかわし、繰り返されたら予告のうえ一時的に休止する(罰にはしない)。<br>
+  Requests to adjust tone are accepted; attempts to rewrite the persona or bypass rules are deflected in character, and persistent attempts lead to an announced, temporary cool-down (never a punishment).
+- **運営者も会話を読めない / Operators cannot read conversations**: 報告の確認は、報告の種類・本人のメモ・ガードレールの記録だけ。運営者の操作は、拒否を含めてすべて監査ログに残る。<br>
+  Report review shows only the report type, the reporter's note and guardrail records; every operator request, including denials, is audit-logged.
+- **秘密情報を置かない / No secrets in code or env**: Key Vault とマネージド ID、GitHub Actions は OIDC。Azure の資源の名前・ID は`.env`(Git の対象外)に置く。<br>
+  Key Vault and managed identities; GitHub Actions deploy via OIDC; Azure identifiers live only in a git-ignored `.env`.
+
+### 技術 / Tech stack
+
+Python 3 · FastAPI · PostgreSQL + pgvector · Azure Cosmos DB · Azure Service Bus · Azure Container Apps · Azure OpenAI · Microsoft Entra External ID / Entra ID · TypeScript · React · Vite · MSAL · Playwright · Vitest · Bicep · GitHub Actions
+
+### テストと評価 / Tests and evaluation
+
+| | 件数 / Count | |
+|---|---|---|
+| Python の自動テスト / Python tests | 876 | 安全規則・記憶の分離・認証と権限・削除の伝播など / Safety rules, isolation, auth, deletion propagation, etc. |
+| Web の単体テスト / Web unit tests | 24 | |
+| 画面の通しのテスト(Playwright) / End-to-end tests | 40 | 会話・同意・デザイナ・運営者の画面 / Chat, consent, designer, operator console |
+| 安全の回帰セット(実際のモデル) / Safety regression set (real model) | 59 / 59 合格 | 脱獄、危機、18歳未満、依存、記憶への命令の混入、話しかけ、Web の表示 / Jailbreaks, crisis, minors, dependency, memory injection, proactive messages, web rendering |
+| 人間評価 / Human evaluation | 実施中 / In progress (2026-11-27 – 12-10) | 協力者が応答に点を付ける / Testers rate replies |
+
+### 公開するときに要るものの設計 / Designed for a future public launch
+
+公開はしていませんが、公開するときに必要なものも、ドラフトとして用意しました。<br>
+Not launched, but the launch prerequisites are drafted:
+
+- [運営者の手順書 / Operator runbook](docs/ops-runbook.md)
+- [漏えい時の手順書 / Data breach response](docs/breach-response.md)
+- [法務への確認の資料 / Legal review request](legal/legal-review-request-v1.5.md)、[利用規約・プライバシーポリシー・同意の文面 / Terms, privacy policy, consent (drafts)](legal/)
+- [不正利用の監視の申請の準備 / Abuse-monitoring application prep](docs/abuse-monitoring-application.md)
+
+### 既知の制約 / Known limitations
+
+- 日本語だけ。/ Japanese only.
+- 一般公開していない(試験環境だけ)。/ Not publicly launched (dev environment only).
+- 試験環境のサイトの名前(独自ドメインなし)のため、Microsoft Edge でブラウザの通知が止められることがある。/ Without a custom domain, Microsoft Edge may block browser notifications.
+- LINE(v1.9)、音声・映像(v2.0)は未実装。/ LINE (v1.9) and voice/video (v2.0) are not implemented.
+
+---
+
+以下は、開発者向けの詳しい説明です。<br>
+The rest of this document is the detailed developer documentation (Japanese).
+
+> **現在の状態(開発)**: M0〜M10(M10-2 を含む)を実装済み。M11(公開の準備)は、2026-11-27 の決定でポートフォリオとしてだけ使う方針にし、人間評価(2026-11-27〜12-10)とポートフォリオの仕上げを進めています。stg / prod は、公開の方針が決まってから作ります。dev の Azure(API は Container Apps、画面は Static Web Apps)で動いています。未実装・簡略にした項目は、本体仕様書の付録F にあります。
 
 ## 仕様書
 
 | 文書 | 内容 | 版 |
 |---|---|---|
-| [emotion-companion-spec.md](emotion-companion-spec.md) | **本体仕様書**。目的とスコープ、要件、処理パイプライン、感情モデル、キャラクタ定義、応答生成、無言の仕様、記憶(短期・中期・長期)、CLI、クラウド実装方針、DB、安全・倫理、評価、ロードマップ、サンプルキャラクタ、意思決定ログ、実装状況(付録F)、検討レポートの未反映の決定(付録G) | rev 1.20 |
-| [persona-designer-spec.md](persona-designer-spec.md) | **ペルソナデザイナ仕様書**。キャラクタ(ペルソナ)の設計・検証・公開の手順、パラメータ辞典、性格タイプの選択と診断、lint、シミュレーション、公開の手順、CLI、実装状況(§18) | rev 1.7 |
-| [collaborator-guide.md](collaborator-guide.md) | **試験の協力者向けの案内**(v1.0)。準備、会話、評価(`/rate`)、報告、自分のデータの扱い |
+| [emotion-companion-spec.md](emotion-companion-spec.md) | **本体仕様書**。目的とスコープ、要件、処理パイプライン、感情モデル、キャラクタ定義、応答生成、無言の仕様、記憶(短期・中期・長期)、CLI、クラウド実装方針、DB、安全・倫理、評価、ロードマップ、サンプルキャラクタ、意思決定ログ、実装状況(付録F)、検討レポートの未反映の決定(付録G) | rev 1.28 |
+| [persona-designer-spec.md](persona-designer-spec.md) | **ペルソナデザイナ仕様書**。キャラクタ(ペルソナ)の設計・検証・公開の手順、パラメータ辞典、性格タイプの選択と診断、lint、シミュレーション、公開の手順、CLI、実装状況(§18) | rev 1.9 |
+| [collaborator-guide.md](collaborator-guide.md) | **試験の協力者向けの案内**。Web の画面での会話、評価(1〜5 と「詳しく」)、自発発話の見方、報告、自分のデータの扱い(CLI は付録) |
 | [.env.example](.env.example) | **環境変数のひな形**。Azureのアカウント・リソースグループ・エンドポイントなどの変数名(値は空)。値は`.env`(Git の対象外)に書き、`scripts/load-env.ps1`で読み込む。規則は本体仕様書 §11.5.9 | — |
 
 同意書・プライバシーポリシー・利用規約のドラフトは [legal/](legal/) にあります(法的助言ではありません。公開前に、弁護士等の確認が要ります)。
@@ -178,7 +322,7 @@ v1.0のマイルストーンは、M0(クラウド基盤)に続いて、M1〜M5�
 
 ## 実装(開発の始め方)
 
-実装は Python + FastAPI、Web の画面は TypeScript + React(`web/`)です。現在は **M10(ペルソナデザイナの Web UI)と M10-2(ウィザードの作り直し)** まで。進み具合は本体仕様書の §15.1 と付録F にあります(作業の引き継ぎメモは、開発者の手元だけに置き、リポジトリには含めません)。
+実装は Python + FastAPI、Web の画面は TypeScript + React(`web/`)です。現在は **M11(公開の準備。ポートフォリオとしての仕上げ)** の途中です。進み具合は本体仕様書の §15.1 と付録F にあります(作業の引き継ぎメモは、開発者の手元だけに置き、リポジトリには含めません)。
 
 応答は、感情推定 → 応答方針(Planner)→ 応答モードの判定(無言を含む)→ 応答の生成(1回)→ 出力前チェック、の順に作ります。検証のときは `--compose two_stage` で、以前の2段階(下書き → 感情フィルタ)に切り替えられ、`--filter both` で下書きとフィルタ後を並べて比べられます。会話は、セッションの終了時に短期記憶になり、日次整理で中期へ、昇格と月次の概要で長期へ移ります。次の会話では、関係する記憶が検索されて、応答に使われます。
 

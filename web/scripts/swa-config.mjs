@@ -28,7 +28,7 @@ const csp = [
 ].join("; ");
 
 const config = {
-  navigationFallback: { rewrite: "/index.html", exclude: ["/assets/*", "/sw.js", "/version.json"] },
+  navigationFallback: { rewrite: "/index.html", exclude: ["/assets/*", "/sw.js", "/version.json", "/title.*"] },
   // Service Worker は、古いものが残らないように、キャッシュさせない
   routes: [
     { route: "/sw.js", headers: { "Cache-Control": "no-cache" } },
@@ -39,6 +39,7 @@ const config = {
     { route: "/index.html", headers: { "Cache-Control": "no-cache" } },
     { route: "/ops", headers: { "Cache-Control": "no-cache" } },
     { route: "/designer", headers: { "Cache-Control": "no-cache" } },
+    { route: "/chat", headers: { "Cache-Control": "no-cache" } },
   ],
   globalHeaders: {
     "Content-Security-Policy": csp,

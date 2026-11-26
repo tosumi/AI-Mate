@@ -12,14 +12,14 @@ self.addEventListener("push", (event) => {
   } catch {
     data = {};
   }
-  const title = typeof data.title === "string" ? data.title : "MyCompanion";
+  const title = typeof data.title === "string" ? data.title : "FureAI ペルソナ";
   const body = typeof data.body === "string" ? data.body : "メッセージがあります";
   event.waitUntil(
     Promise.all([
       self.registration.showNotification(title, {
         body,
         tag: "mycompanion-message", // 同じ種類の通知は、まとめて1つにする
-        data: { url: "/" },
+        data: { url: "/chat" },
       }),
       // 開いている画面に知らせて、メッセージを取りに行かせる(本文は渡さない。画面がサーバーから読む)
       tell(),
@@ -39,11 +39,14 @@ function tell() {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   // 開く先は、自分のサイトの中だけ
-  const url = new URL("/", self.location.origin).href;
+  const url = new URL("/chat", self.location.origin).href;
   // 開いている画面があれば、前に出して、メッセージを取りに行かせる(読み直さないので、サインインや入力中の文字が残る)
   event.waitUntil(
     tell().then((windows) => {
-      const open = windows.find((w) => new URL(w.url).origin === self.location.origin);
+      const open = windows.find((w) => {
+        const u = new URL(w.url);
+        return u.origin === self.location.origin && (u.pathname === "/chat" || u.pathname.startsWith("/chat/"));
+      });
       return open ? open.focus() : self.clients.openWindow(url);
     }),
   );

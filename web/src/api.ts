@@ -144,7 +144,10 @@ export class Api {
     return this.request("DELETE", "/v1/account?confirm=delete");
   }
 
-  rate(body: { character_id: string; session_id: string; turn_no: number; overall: number; note?: string }) {
+  rate(body: {
+    character_id: string; session_id: string; turn_no: number; overall: number;
+    persona_fit?: number; naturalness?: number; empathy?: number; note?: string;
+  }) {
     return this.request("POST", "/v1/ratings", body);
   }
 

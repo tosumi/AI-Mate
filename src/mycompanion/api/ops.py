@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
-from mycompanion.api.auth import AuthError, OperatorPrincipal
+from mycompanion.api.auth import AuthError, AuthUnavailable, OperatorPrincipal
 from mycompanion.ops import views
 from mycompanion.ops.audit import ALLOWED, DENIED, UNAUTHENTICATED, OperatorAuditEntry
 from mycompanion.ops.personas import NOTES_MAX, PersonaError, PersonaPublisher, inspect, scenario_list
@@ -81,13 +81,18 @@ def require(permission: Permission) -> Callable[..., Any]:
         now = datetime.now(UTC)
         action = _action(request)
         principal: OperatorPrincipal | None = None
+        unavailable = False
         if credentials is not None:
             try:
                 principal = await deps.ops_verifier.verify(credentials.credentials)
             except AuthError:
                 principal = None
+            except AuthUnavailable:
+                unavailable = True  # 検証の仕組みに届かない(サインインのやり直しでは直らない)
         if principal is None:
             await _audit(request, OperatorAuditEntry(ts=now, actor_id=None, action=action, decision=UNAUTHENTICATED))
+            if unavailable:
+                raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "いまサインインを確かめられません。少し待って、もう一度お試しください。")
             raise HTTPException(
                 status.HTTP_401_UNAUTHORIZED, "認証が必要です", headers={"WWW-Authenticate": "Bearer"}
             )

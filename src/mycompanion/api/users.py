@@ -9,7 +9,7 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from mycompanion.api.auth import AuthError
+from mycompanion.api.auth import AuthError, AuthUnavailable
 
 
 @dataclass(frozen=True)
@@ -37,6 +37,12 @@ async def current_user(
         principal = await deps.verifier.verify(credentials.credentials)
     except AuthError:
         raise unauthorized from None
+    except AuthUnavailable:
+        # サインインのやり直しでは直らない(Entra の障害など)。少し待ってもらう
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="いまサインインを確かめられません。少し待って、もう一度お試しください。",
+        ) from None
     user_id = await deps.users.resolve_user(principal.idp, principal.subject)
     return CurrentUser(user_id=user_id)
 

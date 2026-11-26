@@ -5,7 +5,7 @@ import { mockApi, normalReply } from "./mockApi";
 
 test("ページやキャラクタを切り替えても、会話が残る", async ({ page }) => {
   await mockApi(page, (text) => ({ events: normalReply(`「${text}」の返事`) }), { consented: true });
-  await page.goto("/");
+  await page.goto("/chat");
   await page.getByRole("button", { name: "メールでサインイン" }).click();
   const chat = page.getByRole("region", { name: "会話" });
   await chat.getByLabel("メッセージ").fill("こんにちは");
@@ -29,7 +29,7 @@ test("ページやキャラクタを切り替えても、会話が残る", async
 
 test("記憶・設定は、会話の画面が出たあと、裏で先に読み込んでおく", async ({ page }) => {
   const recorded = await mockApi(page, () => ({ events: normalReply("やあ") }), { consented: true });
-  await page.goto("/");
+  await page.goto("/chat");
   await page.getByRole("button", { name: "メールでサインイン" }).click();
   await expect.poll(() => recorded.calls.filter((c) => c.startsWith("GET /v1/memory") || c === "GET /v1/settings").length).toBeGreaterThanOrEqual(2);
   await page.getByRole("button", { name: "記憶" }).click();
@@ -49,7 +49,7 @@ test("再表示すると、見ていたページとキャラクタに戻り、�
       },
     },
   });
-  await page.goto("/");
+  await page.goto("/chat");
   await page.getByRole("button", { name: "メールでサインイン" }).click();
   const chat = page.getByRole("region", { name: "会話" });
   await chat.getByLabel("キャラクタ").selectOption("sample_kamoku");
@@ -71,7 +71,7 @@ test("再表示すると、見ていたページとキャラクタに戻り、�
 test("ページの見出しは画面に出さず、キャラクタの選択の行は、スクロールしてもメニューのすぐ下に残る", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 600 });
   await mockApi(page, () => ({ events: normalReply("長めの返事です。".repeat(15)) }), { consented: true });
-  await page.goto("/");
+  await page.goto("/chat");
   await page.getByRole("button", { name: "メールでサインイン" }).click();
 
   // 会話: 何往復かして、ページをスクロールさせる
@@ -117,7 +117,7 @@ test("ログインした最初の画面に、終わった会話も含めて、�
       },
     },
   });
-  await page.goto("/");
+  await page.goto("/chat");
   await page.getByRole("button", { name: "メールでサインイン" }).click();
   const chat = page.getByRole("region", { name: "会話" });
   // 何も操作しなくても、最初の画面に出る
@@ -146,7 +146,7 @@ test("読み込みが終わるまで、各ページに「読み込んでいま�
       await route.fallback();
     });
   }
-  await page.goto("/");
+  await page.goto("/chat");
   // 同意の確認も止まるので、サインインの前に止めるのは、会話・記憶だけにする
   await page.unroute("**/v1/account/consents");
   await page.getByRole("button", { name: "メールでサインイン" }).click();

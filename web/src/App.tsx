@@ -102,7 +102,7 @@ export function App() {
   return (
     <div className="app">
       <header className="app-header" ref={headerRef}>
-        <span className="app-name">MyCompanion</span>
+        <a className="app-name back-to-title" href="/" title="タイトルに戻る">FureAI ペルソナ</a>
         {phase === "main" && (
           <nav aria-label="画面" className="tabs">
             {TABS.map((t) => (
@@ -112,6 +112,7 @@ export function App() {
             ))}
           </nav>
         )}
+        <a className="link" href="/">タイトルに戻る</a>
         {(phase === "main" || phase === "consent") && auth && (
           <button className="link" onClick={() => auth.signOut().then(() => setPhase("signed-out"))}>
             サインアウト
@@ -122,10 +123,16 @@ export function App() {
       <main>
         <ErrorBoundary>
           {phase === "loading" && <p aria-busy="true">読み込んでいます…</p>}
-          {phase === "error" && <p role="alert">{message}</p>}
+          {phase === "error" && (
+            <>
+              <p role="alert">{message}</p>
+              {/* 一時的な障害(サインインの確認ができない、混み合っているなど)のときに、読み込み直せるように */}
+              <button onClick={() => window.location.reload()}>もう一度試す</button>
+            </>
+          )}
           {phase === "signed-out" && auth && (
             <section className="signin">
-              <h1>MyCompanion</h1>
+              <h1>FureAI ペルソナ</h1>
               <p>AI のキャラクタが、あなたの気持ちを推しはかりながら会話するサービスです。キャラクタは AI であり、人間ではありません。</p>
               <button
                 disabled={signingIn}
@@ -133,16 +140,24 @@ export function App() {
                   if (signingIn) return;
                   setSigningIn(true);
                   setMessage("");
+                  let signedIn = false;
                   try {
                     // 本物は、サインインの画面へ移る(戻ってきたら、起動時に結果を受け取る)。押せないままにしておく
-                    if (await auth.signIn()) {
-                      await afterSignIn();
-                      setSigningIn(false);
-                    }
+                    signedIn = await auth.signIn();
                   } catch (e) {
                     setMessage(signInErrorMessage(e));
                     setSigningIn(false);
+                    return;
                   }
+                  if (!signedIn) return;
+                  try {
+                    await afterSignIn();
+                  } catch (e) {
+                    // サインインのあとの失敗(サーバーの障害など)は、サインインの失敗と分けて、理由をそのまま出す
+                    setMessage((e as Error).message);
+                    setPhase("error");
+                  }
+                  setSigningIn(false);
                 }}
               >
                 {signingIn ? "サインインの画面へ移動しています…" : "メールでサインイン"}

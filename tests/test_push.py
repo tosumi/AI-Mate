@@ -84,8 +84,8 @@ def test_payload_is_encrypted_and_signed_without_sending():
     from pywebpush import WebPusher
 
     # 本文は、購読の鍵で暗号化する(通知サービスには、平文の本文が見えない)
-    encoded = WebPusher(browser_subscription().info()).encode(b'{"title":"MyCompanion"}')
-    assert b"MyCompanion" not in encoded["body"]
+    encoded = WebPusher(browser_subscription().info()).encode(b'{"title":"FureAI"}')
+    assert b"FureAI" not in encoded["body"]
     # VAPID の署名は、RFC 8292 の形。公開鍵(k)は、画面に渡すものと同じ
     headers = Vapid02.from_raw(KEYS.private_raw.encode()).sign(
         {"aud": "https://fcm.googleapis.com", "sub": "https://app.example", "exp": 2_000_000_000}
@@ -112,7 +112,7 @@ async def test_notify_sends_to_every_device_and_drops_gone_ones():
         return KEYS
 
     service = PushService(store, load, "https://app.example", sender)
-    counts = await service.notify(USER, "MyCompanion", "ハルからメッセージがあります")
+    counts = await service.notify(USER, "FureAI ペルソナ", "ハルからメッセージがあります")
     assert counts == {"sent": 1, "gone": 1, "failed": 2}
     assert len(sent) == 4
     assert devices[1].endpoint not in [s.endpoint for s in await store.subscriptions(USER)]  # 届かない購読は消す

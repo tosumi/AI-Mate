@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
 
 test("記憶とトピックを、話題に出さない・削除できる", async ({ page }) => {
   const recorded = await mockApi(page, () => ({ events: normalReply("やあ") }), { consented: true });
-  await page.goto("/");
+  await page.goto("/chat");
   await page.getByRole("button", { name: "メールでサインイン" }).click();
   await page.getByRole("button", { name: "記憶" }).click();
 
@@ -37,7 +37,7 @@ test("記憶とトピックを、話題に出さない・削除できる", async
 
 test("設定を変えられる", async ({ page }) => {
   const recorded = await mockApi(page, () => ({ events: normalReply("やあ") }), { consented: true });
-  await page.goto("/");
+  await page.goto("/chat");
   await page.getByRole("button", { name: "メールでサインイン" }).click();
   await page.getByRole("button", { name: "設定" }).click();
   await page.getByLabel(/黙ったり、相づちだけで返したりしてよい/).uncheck();
@@ -60,7 +60,7 @@ test("通知を使えるときは、この端末で受け取るボタンを出�
   await mockApi(page, () => ({ events: normalReply("やあ") }), { consented: true, push: true });
   // 自動のブラウザ(画面なし)は、通知を常に拒否する。ふつうのブラウザ(まだ決めていない)の状態にして、画面の表示だけを確かめる
   await page.addInitScript(() => Object.defineProperty(Notification, "permission", { get: () => "default" }));
-  await page.goto("/");
+  await page.goto("/chat");
   await page.getByRole("button", { name: "メールでサインイン" }).click();
   await page.getByRole("button", { name: "設定" }).click();
   await expect(page.getByRole("status").filter({ hasText: "現在の設定：" })).toHaveText("現在の設定：この端末では通知を受け取りません");
@@ -70,7 +70,7 @@ test("通知を使えるときは、この端末で受け取るボタンを出�
 
 test("書き出し・同意の取り消し・アカウントの削除ができる", async ({ page }) => {
   const recorded = await mockApi(page, () => ({ events: normalReply("やあ") }), { consented: true });
-  await page.goto("/");
+  await page.goto("/chat");
   await page.getByRole("button", { name: "メールでサインイン" }).click();
   await page.getByRole("button", { name: "アカウント" }).click();
 

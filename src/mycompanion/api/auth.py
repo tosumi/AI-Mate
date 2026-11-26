@@ -19,6 +19,13 @@ from mycompanion.config import AuthConfig, OperatorAuthConfig
 IDP_ENTRA_EXTERNAL_ID = "entra_external_id"
 
 
+class AuthUnavailable(Exception):
+    """検証の仕組み(OpenID Connect のメタデータ・署名鍵)に、いま届かない(Entra の障害・ネットワークの不調)。
+
+    トークンが不正なのではないので、401(サインインのやり直し)ではなく 503(少し待って、もう一度)にする。
+    """
+
+
 class AuthError(Exception):
     """認証の失敗。利用者に返す文言は一律にし、理由の詳細は返さない。"""
 
@@ -76,6 +83,8 @@ class _JwtVerifier:
             )
         except AuthError:
             raise
+        except (httpx.HTTPError, jwt.PyJWKClientConnectionError) as exc:
+            raise AuthUnavailable("検証の仕組みに届きません") from exc
         except Exception as exc:
             raise AuthError("トークンを検証できません") from exc
         return claims

@@ -110,7 +110,7 @@ async def open_context() -> AsyncIterator[Context]:
                 persona = await stores.get_character(character_id)
                 try:
                     # 通知の文面には、会話の内容を入れない(キャラクタ名と、メッセージがあることだけ)
-                    counts = await push.notify(user_id, "MyCompanion", f"{persona.name if persona else 'キャラクタ'}からメッセージがあります")
+                    counts = await push.notify(user_id, "FureAI ペルソナ", f"{persona.name if persona else 'キャラクタ'}からメッセージがあります")
                     logger.info("通知: %s", counts)
                 except Exception as exc:  # noqa: BLE001 - 通知に失敗しても、話しかけたことは取り消さない
                     logger.warning("通知に失敗しました: %s", type(exc).__name__)

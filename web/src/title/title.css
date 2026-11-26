@@ -1,0 +1,51 @@
+/* 入口のタイトル画面(/)。1枚絵を画面いっぱいに敷き、下のほうに名前と2つの入口を置く。スマホでも押しやすい大きさにする。 */
+.title {
+  --title-fg: #fdfbff;
+  --title-accent: #6a4fc1;
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: end center; /* 絵(吹き出し)は上に、入口は下に */
+  padding: 1.5rem 1rem 9vh;
+  overflow: hidden;
+  background: #241c3d;
+  color: var(--title-fg);
+}
+.title-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.title-panel {
+  position: relative;
+  width: min(30rem, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.75rem 1.5rem;
+  border-radius: 1rem;
+  background: rgb(20 14 36 / 0.55);
+  backdrop-filter: blur(6px);
+  text-align: center;
+}
+.title-name { margin: 0; font-size: clamp(2rem, 7vw, 3rem); letter-spacing: 0.04em; }
+.title-lead { margin: 0; font-size: 1rem; opacity: 0.9; }
+.title-entries { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; width: 100%; margin-top: 0.75rem; }
+.title-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.9rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 2px solid rgb(255 255 255 / 0.7);
+  background: rgb(255 255 255 / 0.12);
+  color: var(--title-fg);
+  text-decoration: none;
+}
+.title-entry strong { font-size: 1.25rem; }
+.title-entry span { font-size: 0.85rem; opacity: 0.9; }
+.title-entry.primary { background: var(--title-accent); border-color: var(--title-accent); }
+.title-entry:hover, .title-entry:focus-visible { outline: 3px solid #ffe7c4; outline-offset: 2px; }
+.title-error { margin: 0; color: #ffd0d0; }
+.title-busy { padding: 2rem; text-align: center; }
+@media (max-width: 26rem) {
+  .title-entries { grid-template-columns: 1fr; }
+}

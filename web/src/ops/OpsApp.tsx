@@ -44,7 +44,7 @@ export function OpsApp() {
   const [tab, setTabState] = useState<Tab | null>(() => recall("ops.tab") as Tab | null);
 
   useEffect(() => {
-    document.title = "MyCompanion 運営";
+    document.title = "FureAI ペルソナ 運営";
   }, []);
 
   async function afterSignIn() {
@@ -110,7 +110,7 @@ export function OpsApp() {
   return (
     <div className="ops">
       <header className="ops-header">
-        <span className="ops-brand">MyCompanion <span className="ops-badge">運営</span></span>
+        <span className="ops-brand">FureAI ペルソナ <span className="ops-badge">運営</span></span>
         {phase === "main" && tabs.length > 0 && (
           <nav aria-label="運営の画面" className="ops-tabs">
             {tabs.map((t) => (

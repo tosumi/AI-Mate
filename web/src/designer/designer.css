@@ -225,3 +225,7 @@
 /* 確認の画面(モーダル): 画面の中央に出し、後ろを暗くする(後ろは操作できない) */
 .dz-modal { width: min(36rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); overflow-y: auto; color: var(--dz-fg); box-shadow: 0 0.75rem 2.5rem rgb(0 0 0 / 0.3); }
 .dz-modal::backdrop { background: rgb(0 0 0 / 0.45); }
+
+/* タイトルに戻る(M11 の手順1) */
+.dz a.dz-to-title { color: var(--dz-header-fg); text-decoration: none; display: inline-flex; align-items: center; }
+.dz a.dz-to-title:hover, .dz a.dz-to-title:focus-visible { text-decoration: underline; }

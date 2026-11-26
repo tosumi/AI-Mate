@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import httpx
+
 from mycompanion import telemetry
 from mycompanion.config import LLM_ROLES, AzureOpenAIConfig, EngineSettings
 from mycompanion.emotion.models import EmotionEstimate, RuleMatch
@@ -46,6 +48,11 @@ from mycompanion.llm.stream import DeltaSink, JsonTextExtractor
 AZURE_OPENAI_SCOPE = "https://cognitiveservices.azure.com/.default"
 
 
+# 1回の呼び出しの時間切れと、再試行の回数(M11 の手順2: 障害時の動作)
+LLM_TIMEOUT = httpx.Timeout(120.0, connect=10.0)
+LLM_MAX_RETRIES = 2
+
+
 class AzureOpenAILLMClient:
     def __init__(
         self, config: AzureOpenAIConfig, settings: EngineSettings, client: Any | None = None
@@ -64,6 +71,11 @@ class AzureOpenAILLMClient:
         return AsyncOpenAI(
             base_url=f"{self._config.endpoint.rstrip('/')}/openai/v1/",
             api_key=token_provider,
+            # SDK の既定(時間切れ 10分)では、容量不足・障害のときに利用者を長く待たせる。
+            # 時間切れは 2分(接続は 10秒)、再試行は 2回(429・5xx。待ち時間の指示に従う)。それでも駄目なら、
+            # エンジンが「いま応答を作れませんでした」(llm_unavailable。503)にする(本体仕様書 §11.2、§15.1 の M11 の手順2)
+            timeout=LLM_TIMEOUT,
+            max_retries=LLM_MAX_RETRIES,
         )
 
     async def estimate_emotion(self, text: str, context: EmotionContext) -> LlmEmotionResult:

@@ -2,11 +2,12 @@
 
 import time
 
+import httpx
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from mycompanion.api.auth import AuthError, EntraTokenVerifier, principal_from_claims
+from mycompanion.api.auth import AuthError, AuthUnavailable, EntraTokenVerifier, principal_from_claims
 from mycompanion.config import AuthConfig
 
 CONFIG = AuthConfig(
@@ -97,3 +98,57 @@ async def test_unsigned_token_is_rejected(keys):
 def test_subject_falls_back_to_sub():
     principal = principal_from_claims({"scp": "a companion.access", "sub": "sub-1"}, "companion.access")
     assert principal.subject == "sub-1"
+
+
+# --- 検証の仕組みに届かないとき(M11 の手順2: 障害時の動作) ---
+
+
+async def test_metadata_outage_is_unavailable_not_invalid(keys):
+    """Entra のメタデータが取れない(障害・ネットワーク)のは、トークンの不正ではない(401 でなく 503 にするため)。"""
+
+    def down(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("unreachable", request=request)
+
+    verifier = EntraTokenVerifier(CONFIG, http_client=httpx.AsyncClient(transport=httpx.MockTransport(down)))
+    with pytest.raises(AuthUnavailable):
+        await verifier.verify(_token(keys[0]))
+
+    def error(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503)
+
+    verifier = EntraTokenVerifier(CONFIG, http_client=httpx.AsyncClient(transport=httpx.MockTransport(error)))
+    with pytest.raises(AuthUnavailable):
+        await verifier.verify(_token(keys[0]))
+
+
+async def test_signing_key_outage_is_unavailable(keys):
+    class _DownJwks:
+        def get_signing_key_from_jwt(self, token):
+            raise jwt.PyJWKClientConnectionError("unreachable")
+
+    verifier = EntraTokenVerifier(CONFIG)
+    verifier._issuer = ISSUER
+    verifier._jwks = _DownJwks()
+    with pytest.raises(AuthUnavailable):
+        await verifier.verify(_token(keys[0]))
+
+
+def test_api_answers_503_while_sign_in_cannot_be_checked():
+    import uuid
+
+    from fastapi.testclient import TestClient
+
+    from mycompanion.api.app import AppDeps, create_app
+
+    class _Down:
+        async def verify(self, token):
+            raise AuthUnavailable("down")
+
+    class _Users:
+        async def resolve_user(self, idp, subject):
+            return uuid.uuid4()
+
+    client = TestClient(create_app(AppDeps(verifier=_Down(), users=_Users())))
+    response = client.get("/v1/designer/choices", headers={"Authorization": "Bearer t"})
+    assert response.status_code == 503
+    assert "少し待って" in response.json()["detail"]

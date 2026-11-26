@@ -6,10 +6,23 @@ CLI・Web・LINE のアダプタは、どれも `TurnInput` をエンジンに�
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+
+# 動く形のマークアップ(HTML のタグの始まり、javascript: の URL)。画面は文字として出すので動かないが、
+# 念のため、キャラクタの発話からは、全角に置き換えて無害にする(本体仕様書 §15.1 の M11 の手順2)
+_TAG_START = re.compile(r"<(?=\s*/?\s*[A-Za-z!])")
+_JS_URL = re.compile(r"(java\s*script|vbscript|data)\s*:", re.IGNORECASE)
+
+
+def neutralize_markup(text: str) -> str:
+    return _JS_URL.sub(lambda m: m.group(1) + "：", _TAG_START.sub("＜", text))
+
+
+SpokenText = Annotated[str, AfterValidator(neutralize_markup)]
 
 
 class Capabilities(BaseModel):
@@ -36,7 +49,7 @@ class TurnInput(BaseModel):
 
 class MessageAction(BaseModel):
     type: Literal["message"] = "message"
-    text: str
+    text: SpokenText
     variant: Literal["filtered", "draft"] = "filtered"
 
 
@@ -47,12 +60,12 @@ class SilenceAction(BaseModel):
 
 class BackchannelAction(BaseModel):
     type: Literal["backchannel"] = "backchannel"
-    text: str
+    text: SpokenText
 
 
 class DelayedMessageAction(BaseModel):  # v1.9
     type: Literal["delayed_message"] = "delayed_message"
-    text: str
+    text: SpokenText
     delay_sec: int
 
 

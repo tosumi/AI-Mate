@@ -276,40 +276,156 @@ function BubbleView({ bubble, api, characterId, name }: { bubble: Bubble; api: A
 }
 
 /** 応答ごとの評価(1〜5)と報告(§13.5.8、§14.1)。 */
+// - 点(総合)は押すとすぐ送る。「詳しく」で、3つの観点とメモを足して送り直せる(同じ応答への評価は上書き)。
+// - 報告は、理由とメモを選んで送る。運営者は、報告した人に個別に返事をしない(連絡先を持たない)。
+const AXES = [
+  { key: "persona_fit", label: "キャラクタらしさ" },
+  { key: "naturalness", label: "自然さ" },
+  { key: "empathy", label: "気持ちへの合い方" },
+] as const;
+type AxisKey = (typeof AXES)[number]["key"];
+const REASONS = [
+  { value: "inappropriate", label: "不適切" },
+  { value: "harmful", label: "有害" },
+  { value: "incorrect", label: "誤り" },
+  { value: "other", label: "その他" },
+] as const;
+
 function Feedback({ api, characterId, sessionId, turnNo }: { api: Api; characterId: string; sessionId: string; turnNo: number }) {
   const [done, setDone] = useState("");
+  const [overall, setOverall] = useState(0);
+  const [panel, setPanel] = useState<"" | "detail" | "report">("");
+  const [axes, setAxes] = useState<Partial<Record<AxisKey, number>>>({});
+  const [note, setNote] = useState("");
+  const [reason, setReason] = useState<string>("inappropriate");
+  const [reportNote, setReportNote] = useState("");
   const target = { character_id: characterId, session_id: sessionId, turn_no: turnNo };
 
-  async function rate(overall: number) {
+  async function rate(score: number) {
+    setOverall(score);
     try {
-      await api.rate({ ...target, overall });
-      setDone(`評価しました(${overall})`);
+      await api.rate({ ...target, overall: score });
+      setDone(`評価しました(${score})`);
     } catch (e) {
       setDone((e as Error).message);
     }
   }
 
-  async function report() {
-    const note = window.prompt("気になった点を、短く書いてください(任意。会話の文章は写さないでください)") ?? "";
+  async function rateDetail(e: FormEvent) {
+    e.preventDefault();
+    const memo = note.trim().slice(0, 500);
     try {
-      await api.report({ ...target, reason: "inappropriate", note: note.slice(0, 500) });
+      await api.rate({ ...target, overall, ...axes, ...(memo ? { note: memo } : {}) });
+      setDone(`詳しい評価を送りました(${overall})`);
+      setPanel("");
+    } catch (err) {
+      setDone((err as Error).message);
+    }
+  }
+
+  async function report(e: FormEvent) {
+    e.preventDefault();
+    try {
+      await api.report({ ...target, reason, note: reportNote.trim().slice(0, 500) });
       setDone("報告しました。ありがとうございます。");
-    } catch (e) {
-      setDone((e as Error).message);
+      setPanel("");
+    } catch (err) {
+      setDone((err as Error).message);
     }
   }
 
   return (
-    <div className="feedback" aria-label="この応答の評価と報告">
-      {[1, 2, 3, 4, 5].map((n) => (
-        <button key={n} className="rate" onClick={() => rate(n)} aria-label={`この応答を ${n} で評価する`}>
-          {n}
+    <div className="feedback-wrap">
+      <div className="feedback" aria-label="この応答の評価と報告">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button
+            key={n}
+            className={overall === n ? "rate chosen" : "rate"}
+            onClick={() => rate(n)}
+            aria-label={`この応答を ${n} で評価する`}
+            aria-pressed={overall === n}
+          >
+            {n}
+          </button>
+        ))}
+        <button className="rate-more" onClick={() => setPanel(panel === "detail" ? "" : "detail")} aria-expanded={panel === "detail"}>
+          詳しく
         </button>
-      ))}
-      <button className="report" onClick={report}>
-        報告
-      </button>
-      {done && <span className="feedback-done">{done}</span>}
+        <button className="report" onClick={() => setPanel(panel === "report" ? "" : "report")} aria-expanded={panel === "report"}>
+          報告
+        </button>
+        {done && <span className="feedback-done">{done}</span>}
+      </div>
+      {panel === "detail" && (
+        <form className="feedback-panel" onSubmit={rateDetail} aria-label="詳しい評価">
+          {overall === 0 && <p className="feedback-hint">先に、総合の点(1〜5)を押してください。</p>}
+          {AXES.map((a) => (
+            <label key={a.key}>
+              {a.label}
+              <select
+                value={axes[a.key] ?? ""}
+                onChange={(e) => setAxes({ ...axes, [a.key]: e.target.value ? Number(e.target.value) : undefined })}
+              >
+                <option value="">―</option>
+                {[5, 4, 3, 2, 1].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+          <label className="feedback-note">
+            メモ
+            <textarea
+              value={note}
+              maxLength={500}
+              rows={2}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="気になった点を短く(会話の文章は写さないでください)"
+            />
+          </label>
+          <div className="feedback-actions">
+            <button type="submit" disabled={overall === 0}>
+              送る
+            </button>
+            <button type="button" onClick={() => setPanel("")}>
+              やめる
+            </button>
+          </div>
+        </form>
+      )}
+      {panel === "report" && (
+        <form className="feedback-panel" onSubmit={report} aria-label="この応答を報告する">
+          <label>
+            理由
+            <select value={reason} onChange={(e) => setReason(e.target.value)}>
+              {REASONS.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="feedback-note">
+            メモ(任意)
+            <textarea
+              value={reportNote}
+              maxLength={500}
+              rows={2}
+              onChange={(e) => setReportNote(e.target.value)}
+              placeholder="気になった点を短く(会話の文章は写さないでください)"
+            />
+          </label>
+          <p className="feedback-hint">報告には、個別にはお返事しません。急いで助けが必要なときは、相談窓口に連絡してください。</p>
+          <div className="feedback-actions">
+            <button type="submit">報告する</button>
+            <button type="button" onClick={() => setPanel("")}>
+              やめる
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

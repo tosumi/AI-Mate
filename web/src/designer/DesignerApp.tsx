@@ -75,7 +75,7 @@ export function DesignerApp() {
   useHeightVar(header, "--dz-header-h");
 
   useEffect(() => {
-    document.title = "MyCompanion デザイナ";
+    document.title = "FureAI ペルソナ デザイナ";
   }, []);
 
   const afterSignIn = useCallback(async () => {
@@ -143,7 +143,7 @@ export function DesignerApp() {
   return (
     <div className="dz">
       <header className="dz-header" ref={header}>
-        <span className="dz-brand">MyCompanion <span className="dz-badge">デザイナ</span></span>
+        <span className="dz-brand">FureAI ペルソナ <span className="dz-badge">デザイナ</span></span>
         {phase === "main" && (
           <nav aria-label="デザイナの画面" className="dz-pages">
             {PAGES.map((p) => (
@@ -153,6 +153,7 @@ export function DesignerApp() {
             ))}
           </nav>
         )}
+        <a className="dz-signout dz-to-title" href="/">タイトルに戻る</a>
         {signedIn && auth && (
           <button className="dz-signout" onClick={() => auth.signOut().then(() => setPhase("signed-out"))}>サインアウト</button>
         )}
